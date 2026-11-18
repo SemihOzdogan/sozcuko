@@ -1,3 +1,13 @@
+# Keep React Native framework symbols in Release archives. These must be set
+# before react_native_pods.rb is loaded because it initializes RNCore/Hermes
+# during Podfile evaluation.
+require 'fileutils'
+require 'tmpdir'
+
+ENV['RCT_USE_PREBUILT_RNCORE'] = '1'
+ENV['RCT_SYMBOLICATE_PREBUILT_FRAMEWORKS'] = '1'
+ENV['RCT_BUILD_HERMES_FROM_SOURCE'] = 'true'
+
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
@@ -5,7 +15,10 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+platform :ios, '15.1'
+# Google Sign-In / AppCheck Swift pods need module maps when React Native
+# dependencies are linked as static libraries.
+use_modular_headers!
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -14,7 +27,7 @@ if linkage != nil
   use_frameworks! :linkage => linkage.to_sym
 end
 
-target 'ZihinArenasi' do
+target 'Sozcuko' do
   config = use_native_modules!
 
   use_react_native!(
@@ -30,5 +43,112 @@ target 'ZihinArenasi' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        if build_config.name == 'Release'
+          build_config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+          build_config.build_settings['GCC_GENERATE_DEBUGGING_SYMBOLS'] = 'YES'
+          build_config.build_settings['COPY_PHASE_STRIP'] = 'NO'
+          build_config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
+        end
+      end
+    end
+
+    # dSYMs must never remain inside an embedded framework bundle. App Store
+    # Connect expects them in the archive's dSYMs directory instead.
+    pods_root = Pod::Config.instance.project_pods_root
+    symbols_root = File.join(pods_root, 'FrameworkDSyms')
+    FileUtils.mkdir_p(symbols_root)
+
+    react_dsyms = Dir.glob(File.join(pods_root, 'React-Core-prebuilt', 'React.xcframework', '*', 'React.framework', 'dSYMs', 'React.framework.dSYM'))
+    react_dsym = react_dsyms.find { |path| path.include?('/ios-arm64/') } || react_dsyms.first
+    if react_dsym && File.directory?(react_dsym)
+      FileUtils.rm_rf(File.join(symbols_root, 'React.framework.dSYM'))
+      FileUtils.cp_r(react_dsym, symbols_root)
+    end
+    react_dsyms.each { |path| FileUtils.rm_rf(File.dirname(path)) }
+
+    deps_framework = File.join(pods_root, 'ReactNativeDependencies', 'framework', 'packages', 'react-native', 'ReactNativeDependencies.xcframework', 'ios-arm64', 'ReactNativeDependencies.framework')
+    deps_dsym = File.join(deps_framework, 'dSYMs', 'ReactNativeDependencies.framework.dSYM')
+    unless File.directory?(deps_dsym)
+      deps_archive = File.join(pods_root, 'ReactNativeDependencies-artifacts', 'reactnative-dependencies-0.87.0-dSYM-release.tar.gz')
+      unless File.file?(deps_archive)
+        FileUtils.mkdir_p(File.dirname(deps_archive))
+        url = 'https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.87.0/react-native-artifacts-0.87.0-reactnative-dependencies-dSYM-release.tar.gz'
+        abort 'ReactNativeDependencies dSYM download failed' unless system('curl', '-fsSL', url, '-o', deps_archive)
+      end
+
+      Dir.mktmpdir('react-native-deps-dsym') do |tmp_dir|
+        abort 'ReactNativeDependencies dSYM extraction failed' unless system('tar', '-xzf', deps_archive, '-C', tmp_dir)
+        extracted = File.join(tmp_dir, 'ios-arm64', 'ReactNativeDependencies.framework.dSYM')
+        FileUtils.mkdir_p(File.join(deps_framework, 'dSYMs'))
+        FileUtils.cp_r(extracted, File.join(deps_framework, 'dSYMs')) if File.directory?(extracted)
+      end
+    end
+    if File.directory?(deps_dsym)
+      FileUtils.rm_rf(File.join(symbols_root, 'ReactNativeDependencies.framework.dSYM'))
+      FileUtils.cp_r(deps_dsym, symbols_root)
+    end
+    Dir.glob(File.join(pods_root, 'ReactNativeDependencies', 'framework', 'packages', 'react-native', 'ReactNativeDependencies.xcframework', '*', 'ReactNativeDependencies.framework', 'dSYMs')).each do |path|
+      FileUtils.rm_rf(path)
+    end
+
+    # The Hermes source build's iOS framework template omits this key. Without
+    # it App Store Connect rejects the embedded framework as an invalid bundle.
+    hermes_plists = Dir.glob(File.join(pods_root, 'hermes-engine', '**', 'hermesvm.framework', 'Info.plist'))
+    hermes_plists.each do |plist_path|
+      next unless plist_path.include?('/ios/') || plist_path.include?('/iphoneos/')
+      set_command = ['/usr/libexec/PlistBuddy', '-c', 'Set :MinimumOSVersion 15.1', plist_path]
+      add_command = ['/usr/libexec/PlistBuddy', '-c', 'Add :MinimumOSVersion string 15.1', plist_path]
+      unless system(*set_command)
+        abort("Failed to set MinimumOSVersion in #{plist_path}") unless system(*add_command)
+      end
+    end
+
+    user_target = installer.aggregate_targets
+      .flat_map(&:user_project)
+      .flat_map(&:native_targets)
+      .find { |target| target.name == 'Sozcuko' }
+    if user_target
+      metadata_phase = user_target.shell_script_build_phases.find { |build_phase| build_phase.name == '[Sozcuko] Prepare embedded framework metadata' }
+      metadata_phase ||= user_target.new_shell_script_build_phase('[Sozcuko] Prepare embedded framework metadata')
+      metadata_phase.shell_script = <<~'SH'
+        set -e
+        for plist in \
+          "${PODS_ROOT}/hermes-engine/destroot/Library/Frameworks/ios/hermesvm.framework/Info.plist" \
+          "${PODS_ROOT}/hermes-engine/build/iphoneos/lib/hermesvm.framework/Info.plist"; do
+          if [ -f "$plist" ]; then
+            /usr/libexec/PlistBuddy -c 'Set :MinimumOSVersion 15.1' "$plist" 2>/dev/null || \
+              /usr/libexec/PlistBuddy -c 'Add :MinimumOSVersion string 15.1' "$plist"
+          fi
+        done
+      SH
+
+      embed_index = user_target.build_phases.index { |build_phase| build_phase.respond_to?(:name) && build_phase.name == '[CP] Embed Pods Frameworks' }
+      if embed_index
+        user_target.build_phases.delete(metadata_phase)
+        user_target.build_phases.insert(embed_index, metadata_phase)
+      end
+
+      phase = user_target.shell_script_build_phases.find { |build_phase| build_phase.name == '[Sozcuko] Copy framework dSYMs to archive' }
+      phase ||= user_target.new_shell_script_build_phase('[Sozcuko] Copy framework dSYMs to archive')
+      phase.shell_script = <<~'SH'
+        set -e
+        if [ "$CONFIGURATION" = "Release" ] && [ -n "${DWARF_DSYM_FOLDER_PATH:-}" ]; then
+          symbols_root="${PODS_ROOT}/FrameworkDSyms"
+          for dsym in "$symbols_root/React.framework.dSYM" "$symbols_root/ReactNativeDependencies.framework.dSYM"; do
+            if [ -d "$dsym" ]; then
+              ditto "$dsym" "$DWARF_DSYM_FOLDER_PATH/$(basename "$dsym")"
+            fi
+          done
+
+          hermes_dsym=$(find "${PODS_ROOT}/hermes-engine/build/iphoneos" -type d -name 'hermesvm.framework.dSYM' -print -quit 2>/dev/null || true)
+          if [ -n "$hermes_dsym" ] && [ -d "$hermes_dsym" ]; then
+            ditto "$hermes_dsym" "$DWARF_DSYM_FOLDER_PATH/hermesvm.framework.dSYM"
+          fi
+        fi
+      SH
+    end
   end
 end

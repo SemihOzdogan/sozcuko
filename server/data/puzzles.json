@@ -1,0 +1,62 @@
+[
+  {
+    "id": "story-01",
+    "title": "Gizli Mesaj",
+    "clue": "Kesişen kelimeleri bul.",
+    "letters": ["R", "E", "İ", "S", "M"],
+    "words": ["EMİR", "REİS", "SERİ", "ESİR"],
+    "bonusWords": ["İS", "ER", "Mİ"],
+    "size": 7,
+    "placements": {
+      "EMİR": [{"row":0,"column":2,"letter":"E"},{"row":1,"column":2,"letter":"M"},{"row":2,"column":2,"letter":"İ"},{"row":3,"column":2,"letter":"R"}],
+      "REİS": [{"row":2,"column":0,"letter":"R"},{"row":2,"column":1,"letter":"E"},{"row":2,"column":2,"letter":"İ"},{"row":2,"column":3,"letter":"S"}],
+      "SERİ": [{"row":2,"column":3,"letter":"S"},{"row":3,"column":3,"letter":"E"},{"row":4,"column":3,"letter":"R"},{"row":5,"column":3,"letter":"İ"}],
+      "ESİR": [{"row":0,"column":2,"letter":"E"},{"row":0,"column":3,"letter":"S"},{"row":0,"column":4,"letter":"İ"},{"row":0,"column":5,"letter":"R"}]
+    }
+  },
+  {
+    "id": "school-02",
+    "title": "Okul Çantası",
+    "clue": "Yazı ve okul çağrışımlı kelimeleri bul.",
+    "letters": ["K", "A", "L", "E", "M"],
+    "words": ["KALEM", "KALE", "ELMA", "KEL", "MAL", "KAM"],
+    "bonusWords": ["EL", "AL", "MA", "ALE"],
+    "size": 7,
+    "placements": {
+      "KALEM": [{"row":3,"column":1,"letter":"K"},{"row":3,"column":2,"letter":"A"},{"row":3,"column":3,"letter":"L"},{"row":3,"column":4,"letter":"E"},{"row":3,"column":5,"letter":"M"}],
+      "KALE": [{"row":3,"column":1,"letter":"K"},{"row":4,"column":1,"letter":"A"},{"row":5,"column":1,"letter":"L"},{"row":6,"column":1,"letter":"E"}],
+      "ELMA": [{"row":3,"column":4,"letter":"E"},{"row":4,"column":4,"letter":"L"},{"row":5,"column":4,"letter":"M"},{"row":6,"column":4,"letter":"A"}],
+      "KEL": [{"row":1,"column":3,"letter":"K"},{"row":2,"column":3,"letter":"E"},{"row":3,"column":3,"letter":"L"}],
+      "MAL": [{"row":3,"column":5,"letter":"M"},{"row":4,"column":5,"letter":"A"},{"row":5,"column":5,"letter":"L"}],
+      "KAM": [{"row":1,"column":3,"letter":"K"},{"row":1,"column":4,"letter":"A"},{"row":1,"column":5,"letter":"M"}]
+    }
+  },
+  {
+    "id": "nature-03",
+    "title": "Bahar Yolu",
+    "clue": "Doğadan gelen kelimeleri bul.",
+    "letters": ["B", "A", "H", "A", "R"],
+    "words": ["BAHAR", "BAH", "HAR"],
+    "bonusWords": ["AR", "AH"],
+    "size": 7,
+    "placements": {
+      "BAHAR": [{"row":3,"column":1,"letter":"B"},{"row":3,"column":2,"letter":"A"},{"row":3,"column":3,"letter":"H"},{"row":3,"column":4,"letter":"A"},{"row":3,"column":5,"letter":"R"}],
+      "BAH": [{"row":3,"column":1,"letter":"B"},{"row":4,"column":1,"letter":"A"},{"row":5,"column":1,"letter":"H"}],
+      "HAR": [{"row":3,"column":3,"letter":"H"},{"row":4,"column":3,"letter":"A"},{"row":5,"column":3,"letter":"R"}]
+    }
+  },
+  {
+    "id": "travel-04",
+    "title": "Yolculuk",
+    "clue": "Yolculukla ilgili kelimeleri bul.",
+    "letters": ["K", "U", "Ş", "A", "K"],
+    "words": ["KUŞAK", "KUŞ", "ŞAK"],
+    "bonusWords": ["AŞ", "AK"],
+    "size": 7,
+    "placements": {
+      "KUŞAK": [{"row":3,"column":1,"letter":"K"},{"row":3,"column":2,"letter":"U"},{"row":3,"column":3,"letter":"Ş"},{"row":3,"column":4,"letter":"A"},{"row":3,"column":5,"letter":"K"}],
+      "KUŞ": [{"row":3,"column":1,"letter":"K"},{"row":4,"column":1,"letter":"U"},{"row":5,"column":1,"letter":"Ş"}],
+      "ŞAK": [{"row":3,"column":3,"letter":"Ş"},{"row":4,"column":3,"letter":"A"},{"row":5,"column":3,"letter":"K"}]
+    }
+  }
+]
