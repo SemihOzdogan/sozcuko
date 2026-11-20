@@ -37,6 +37,7 @@ import {
   type LeaguePlayer,
   touchLeaguePlayer,
 } from '../services/leagueService';
+console.log('DuelScreen loaded');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
 const ROUND_SECONDS = 10;
