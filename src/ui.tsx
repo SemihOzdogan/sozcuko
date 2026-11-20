@@ -102,8 +102,13 @@ export function Card({
     ]).start();
   }, [opacity, translateY]);
   return (
-    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      <LinearGradient colors={colors} style={[s.card, style]}>
+    <Animated.View
+      style={{ alignSelf: 'stretch', opacity, transform: [{ translateY }] }}
+    >
+      <LinearGradient
+        colors={colors}
+        style={[s.card, { alignSelf: 'stretch', minWidth: 0 }, style]}
+      >
         {children}
       </LinearGradient>
     </Animated.View>

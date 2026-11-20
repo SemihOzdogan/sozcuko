@@ -113,13 +113,6 @@ export function HomeScreen({ navigation }: Props) {
                   color={C.mint}
                 />
               </View>
-              <View style={s.heroFooter}>
-                <View></View>
-                <View style={s.heroAction}>
-                  <Text style={s.heroActionText}>BAŞLA</Text>
-                  <Text style={s.heroActionArrow}>→</Text>
-                </View>
-              </View>
             </View>
           </Card>
         </Pressable>

@@ -55,7 +55,7 @@ export function LeagueScreen({ navigation }: Props) {
   const loadLeaderboard = () => {
     setLoading(true);
     setError('');
-    getDuelPlayerId()
+    getDuelPlayerId(session?.user?.id)
       .then(id => {
         setPlayerId(id);
         return ensureLeaguePlayer(id, displayName);

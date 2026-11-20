@@ -51,10 +51,63 @@ export const ensureLeaguePlayer = async (
   return rows[0];
 };
 
+export const touchLeaguePlayer = async (
+  playerId: string,
+  displayName: string,
+) => {
+  const rows = await request<LeaguePlayer[]>(
+    `${SUPABASE_REST_URL}/league_players?player_id=eq.${encodeURIComponent(
+      playerId,
+    )}`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        display_name: displayName || 'Oyuncu',
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+  return rows[0];
+};
+
+export const markLeaguePlayerOffline = async (playerId: string) => {
+  const rows = await request<LeaguePlayer[]>(
+    `${SUPABASE_REST_URL}/league_players?player_id=eq.${encodeURIComponent(
+      playerId,
+    )}`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        // Aktif oyuncu sorgusu bu zamanı dışarıda bırakır.
+        updated_at: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    },
+  );
+  return rows[0];
+};
+
 export const fetchLeaguePlayers = async (limit = 100) =>
   request<LeaguePlayer[]>(
     `${SUPABASE_REST_URL}/league_players?select=*&order=points.desc,updated_at.asc&limit=${limit}`,
   );
+
+export const fetchActiveLeaguePlayers = async (
+  playerId: string,
+  activeWithinSeconds = 45,
+) => {
+  const cutoff = new Date(
+    Date.now() - activeWithinSeconds * 1000,
+  ).toISOString();
+  return request<LeaguePlayer[]>(
+    `${SUPABASE_REST_URL}/league_players?player_id=neq.${encodeURIComponent(
+      playerId,
+    )}&updated_at=gte.${encodeURIComponent(
+      cutoff,
+    )}&select=*&order=updated_at.desc&limit=100`,
+  );
+};
 
 export const recordLeagueMatch = async (
   playerId: string,

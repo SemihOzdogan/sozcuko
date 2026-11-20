@@ -14,5 +14,6 @@ module.exports = {
       '<rootDir>/__mocks__/google-signin.js',
     '^@invertase/react-native-apple-authentication$':
       '<rootDir>/__mocks__/apple-authentication.js',
+    '^@notifee/react-native$': '<rootDir>/__mocks__/notifee.js',
   },
 };

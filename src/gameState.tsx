@@ -166,14 +166,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       finishDuel: (result: 'win' | 'lose' | 'draw') => {
         if (result === 'win') {
           setDuelWins(value => value + 1);
-          setLeagueWins(value => value + 1);
-          setLeaguePoints(value => value + 25);
           award(30);
-        } else if (result === 'lose') {
-          setLeagueLosses(value => value + 1);
-          setLeaguePoints(value => Math.max(0, value - 15));
-        } else {
-          setLeaguePoints(value => value + 5);
         }
       },
     }),

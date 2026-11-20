@@ -1784,6 +1784,11 @@ PODS:
     - Yoga
   - RNInAppBrowser (3.7.1):
     - React-Core
+  - RNNotifee (9.1.8):
+    - React-Core
+    - RNNotifee/NotifeeCore (= 9.1.8)
+  - RNNotifee/NotifeeCore (9.1.8):
+    - React-Core
   - RNScreens (4.30.1):
     - hermes-engine
     - RCTRequired
@@ -1973,6 +1978,7 @@ DEPENDENCIES:
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - "RNGoogleSignin (from `../node_modules/@react-native-google-signin/google-signin`)"
   - RNInAppBrowser (from `../node_modules/react-native-inappbrowser-reborn`)
+  - "RNNotifee (from `../node_modules/@notifee/react-native`)"
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - SocketRocket (from `build/rndeps-facades/SocketRocket`)
@@ -2172,6 +2178,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-google-signin/google-signin"
   RNInAppBrowser:
     :path: "../node_modules/react-native-inappbrowser-reborn"
+  RNNotifee:
+    :path: "../node_modules/@notifee/react-native"
   RNScreens:
     :path: "../node_modules/react-native-screens"
   RNSVG:
@@ -2281,6 +2289,7 @@ SPEC CHECKSUMS:
   RNGestureHandler: cd8e3ab40ce3241c5201e899bbe893597cc5208c
   RNGoogleSignin: 55af812db8379f976c403e83eed7dc2151c031bc
   RNInAppBrowser: b53e6f6072c931115bc22ac9dc9510ac2cbea62d
+  RNNotifee: 4a6ee5c7deaf00e005050052d73ee6315dff7ec9
   RNScreens: 18852d36598625e06920903bda957ffe48265548
   RNSVG: ecd0c839f4f2f331b1c83ec5f84d1711653d090b
   SocketRocket: d57b1af80c029e12a75cd9b218287c67381e4593

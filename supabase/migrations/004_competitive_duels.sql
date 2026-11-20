@@ -144,12 +144,14 @@ begin
       when current_player = current_room.player_one_id then current_room.player_two_id
       else current_room.player_one_id
     end;
-    select coalesce(sum(points), 0) into player_score
-    from public.duel_events
-    where room_id = p_room_id and player_id = current_player;
-    select coalesce(sum(points), 0) into opponent_score
-    from public.duel_events
-    where room_id = p_room_id and player_id = opponent;
+    select coalesce(sum(player_event.points), 0) into player_score
+    from public.duel_events as player_event
+    where player_event.room_id = p_room_id
+      and player_event.player_id = current_player;
+    select coalesce(sum(opponent_event.points), 0) into opponent_score
+    from public.duel_events as opponent_event
+    where opponent_event.room_id = p_room_id
+      and opponent_event.player_id = opponent;
     player_result := case
       when player_score > opponent_score then 'win'
       when player_score < opponent_score then 'lose'
@@ -163,7 +165,10 @@ begin
       perform public.record_league_match(current_player, player_name, player_result);
     end if;
 
-    return query select current_player, player_score, player_result;
+    return query select
+      current_player as player_id,
+      player_score as score,
+      player_result as result;
   end loop;
 
   if not current_room.league_recorded then
