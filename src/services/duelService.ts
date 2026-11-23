@@ -8,6 +8,7 @@ import {
 export type DuelRoom = {
   id: string;
   status: 'waiting' | 'playing' | 'finished';
+  mode: 'quick_match' | 'invitation';
   letters: string[];
   player_one_id: string;
   player_two_id: string | null;
@@ -33,8 +34,11 @@ export type DuelFinish = {
   result: DuelResult;
 };
 
-const PLAYER_KEY = '@sozcuko/duel-player-id';
+// Kimlik formatı değiştiğinde eski bekleyen düello odalarıyla eşleşmemek için
+// yeni bir local key kullanılır. Hesap/profil verileri bu işlemden etkilenmez.
+const DEVICE_PLAYER_KEY = '@sozcuko/duel-device-player-id-v2';
 const INVITATION_TTL_SECONDS = 120;
+let devicePlayerIdPromise: Promise<string> | null = null;
 const invitationCutoff = () =>
   new Date(Date.now() - INVITATION_TTL_SECONDS * 1000).toISOString();
 
@@ -83,15 +87,36 @@ const fetchDuelLettersFromApi = async () => {
   return selected.letters;
 };
 
+const getDevicePlayerId = () => {
+  if (!devicePlayerIdPromise) {
+    devicePlayerIdPromise = (async () => {
+      const legacyKeys = (await AsyncStorage.getAllKeys()).filter(
+        key =>
+          key === '@sozcuko/duel-player-id' ||
+          key.startsWith('@sozcuko/duel-player-id:') ||
+          key === '@sozcuko/duel-device-player-id',
+      );
+      if (legacyKeys.length > 0) {
+        await AsyncStorage.multiRemove(legacyKeys);
+      }
+      let deviceId = await AsyncStorage.getItem(DEVICE_PLAYER_KEY);
+      if (!deviceId) {
+        deviceId = `device-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        await AsyncStorage.setItem(DEVICE_PLAYER_KEY, deviceId);
+      }
+      return deviceId;
+    })();
+  }
+  return devicePlayerIdPromise;
+};
+
 export const getDuelPlayerId = async (userId?: string) => {
-  const storageKey = userId ? `${PLAYER_KEY}:${userId}` : PLAYER_KEY;
-  const existing = await AsyncStorage.getItem(storageKey);
-  if (existing) return existing;
-  const id = userId
-    ? `user-${userId}`
-    : `player-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  await AsyncStorage.setItem(storageKey, id);
-  return id;
+  // Aynı uygulama açılışında PresenceTracker ve DuelScreen birlikte çağırsa
+  // bile tek cihaz için tek bir ID üret.
+  const deviceId = await getDevicePlayerId();
+  return userId ? `${deviceId}-user-${userId}` : deviceId;
 };
 
 export const findOrCreateDuelRoom = async (playerId: string) => {
@@ -183,7 +208,7 @@ export const createDuelInvitation = async (
 
 export const fetchIncomingDuelInvitation = async (playerId: string) => {
   const rooms = await request<DuelRoom[]>(
-    `${SUPABASE_REST_URL}/duel_rooms?player_two_id=eq.${encodeURIComponent(
+    `${SUPABASE_REST_URL}/duel_rooms?mode=eq.invitation&player_two_id=eq.${encodeURIComponent(
       playerId,
     )}&status=eq.waiting&created_at=gte.${encodeURIComponent(
       invitationCutoff(),
@@ -212,6 +237,28 @@ export const fetchDuelRoom = (roomId: string) =>
   request<DuelRoom[]>(
     `${SUPABASE_REST_URL}/duel_rooms?id=eq.${roomId}&select=*`,
   ).then(rows => rows[0]);
+
+export const fetchPlayingDuelRoomForPlayer = async (playerId: string) => {
+  const [asPlayerOne, asPlayerTwo] = await Promise.all([
+    request<DuelRoom[]>(
+      `${SUPABASE_REST_URL}/duel_rooms?status=eq.playing&player_one_id=eq.${encodeURIComponent(
+        playerId,
+      )}&select=*&order=started_at.desc&limit=1`,
+    ),
+    request<DuelRoom[]>(
+      `${SUPABASE_REST_URL}/duel_rooms?status=eq.playing&player_two_id=eq.${encodeURIComponent(
+        playerId,
+      )}&select=*&order=started_at.desc&limit=1`,
+    ),
+  ]);
+  return [asPlayerOne[0], asPlayerTwo[0]]
+    .filter(Boolean)
+    .sort((left, right) =>
+      String(right?.started_at ?? '').localeCompare(
+        String(left?.started_at ?? ''),
+      ),
+    )[0];
+};
 
 /*
 export const tryJoinOlderDuelRoom = async (playerId: string) => {
@@ -290,6 +337,17 @@ export const finishDuel = async (roomId: string) => {
   const payload = await request<DuelFinish | DuelFinish[]>(
     `${SUPABASE_RPC_URL}/finish_duel`,
     { method: 'POST', body: JSON.stringify({ p_room_id: roomId }) },
+  );
+  return Array.isArray(payload) ? payload : [payload];
+};
+
+export const forfeitDuel = async (roomId: string, playerId: string) => {
+  const payload = await request<DuelFinish | DuelFinish[]>(
+    `${SUPABASE_RPC_URL}/forfeit_duel`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ p_room_id: roomId, p_player_id: playerId }),
+    },
   );
   return Array.isArray(payload) ? payload : [payload];
 };

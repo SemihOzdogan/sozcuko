@@ -147,6 +147,12 @@ target 'Sozcuko' do
           if [ -n "$hermes_dsym" ] && [ -d "$hermes_dsym" ]; then
             ditto "$hermes_dsym" "$DWARF_DSYM_FOLDER_PATH/hermesvm.framework.dSYM"
           fi
+
+          # App Store Connect rejects dSYMs nested inside embedded frameworks.
+          embedded_frameworks="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          if [ -d "$embedded_frameworks" ]; then
+            find "$embedded_frameworks" -type d -name dSYMs -prune -exec rm -rf {} +
+          fi
         fi
       SH
     end

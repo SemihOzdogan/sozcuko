@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
   AppState,
+  BackHandler,
   FlatList,
   Modal,
   PanResponder,
@@ -25,9 +26,11 @@ import {
   createDuelInvitation,
   fetchDuelEvents,
   fetchDuelRoom,
+  fetchPlayingDuelRoomForPlayer,
   fetchIncomingDuelInvitation,
   findOrCreateDuelRoom,
   finishDuel,
+  forfeitDuel,
   getDuelPlayerId,
   submitDuelWord,
 } from '../services/duelService';
@@ -37,11 +40,15 @@ import {
   type LeaguePlayer,
   touchLeaguePlayer,
 } from '../services/leagueService';
-console.log('DuelScreen loaded');
-
+import { trackEvent } from '../services/analyticsService';
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
 const ROUND_SECONDS = 10;
-const MATCHMAKING_SECONDS = 10;
+const MATCHMAKING_SECONDS = 30;
+const DUEL_REWARDS = {
+  win: { xp: 30, league: 25 },
+  draw: { xp: 0, league: 5 },
+  lose: { xp: 0, league: -15 },
+} as const;
 const WHEEL_SIZE = 314;
 const RADIUS = 112;
 const LETTER_SIZE = 72;
@@ -55,20 +62,13 @@ const baseDuelPoints = (word: string) => {
 };
 
 const scoreDuelEvents = (events: DuelEvent[]) => {
-  const firstEventByWord = new Map<string, number>();
-  events
-    .slice()
-    .sort((left, right) => left.id - right.id)
-    .forEach(event => {
-      const word = normalize(event.word);
-      if (!firstEventByWord.has(word)) firstEventByWord.set(word, event.id);
-    });
-
+  // Puanın tek kaynağı sunucunun duel_events.points alanıdır. Aksi halde
+  // istemci bonusu yeniden hesaplayıp finish_duel ile farklı sonuç üretebilir.
   return events.map(event => ({
     ...event,
-    points:
-      baseDuelPoints(event.word) +
-      (firstEventByWord.get(normalize(event.word)) === event.id ? 20 : 0),
+    points: Number.isFinite(event.points)
+      ? event.points
+      : baseDuelPoints(event.word),
   }));
 };
 
@@ -91,19 +91,20 @@ export function DuelScreen({ navigation, route }: Props) {
     session?.user?.email?.split('@')[0] ||
     'Oyuncu';
   const [room, setRoom] = useState<DuelRoom | null>(null);
+  const currentRoomIdRef = useRef<string | null>(null);
   const [activePlayers, setActivePlayers] = useState<LeaguePlayer[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [selectedOpponent, setSelectedOpponent] = useState<string | null>(null);
   const [isQuickMatch, setIsQuickMatch] = useState(false);
-  const [matchmakingSeconds, setMatchmakingSeconds] = useState(
-    MATCHMAKING_SECONDS,
-  );
+  const [matchmakingSeconds, setMatchmakingSeconds] =
+    useState(MATCHMAKING_SECONDS);
   const [events, setEvents] = useState<DuelEvent[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [feedback, setFeedback] = useState('Rakip aranıyor…');
   const [roomError, setRoomError] = useState('');
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const [result, setResult] = useState<'win' | 'lose' | 'draw' | null>(null);
+  const [exitConfirmVisible, setExitConfirmVisible] = useState(false);
   const selectedRef = useRef<number[]>([]);
   const secondsRef = useRef(ROUND_SECONDS);
   const lastEventId = useRef(0);
@@ -112,8 +113,28 @@ export function DuelScreen({ navigation, route }: Props) {
   const screenOpenedAt = useRef(Date.now());
   const [finishAttempt, setFinishAttempt] = useState(0);
   const invitationIdFromNotification = route.params?.invitationId;
+  currentRoomIdRef.current = room?.id ?? null;
   const startNewDuel = useCallback(async () => {
+    if (loadingPlayers) {
+      setRoomError('Aktif oyuncular yükleniyor. Lütfen tekrar dene.');
+      return;
+    }
     const requestId = ++matchmakingRequestId.current;
+    setRoomError('');
+    let availablePlayers = activePlayers;
+    try {
+      availablePlayers = await fetchActiveLeaguePlayers(playerId);
+      setActivePlayers(availablePlayers);
+    } catch {
+      // Ekrandaki son listeyle devam etmeyi dene.
+    }
+    if (requestId !== matchmakingRequestId.current) return;
+    if (availablePlayers.length === 0) {
+      setRoomError('Şu anda davet edilebilecek aktif oyuncu yok.');
+      return;
+    }
+    const opponent =
+      availablePlayers[Math.floor(Math.random() * availablePlayers.length)];
     selectedRef.current = [];
     secondsRef.current = ROUND_SECONDS;
     lastEventId.current = 0;
@@ -122,45 +143,99 @@ export function DuelScreen({ navigation, route }: Props) {
     setEvents([]);
     setSelected([]);
     setSelectedOpponent(null);
-    setIsQuickMatch(true);
-    setFeedback('Rakip aranıyor…');
-    setRoomError('');
+    setIsQuickMatch(false);
+    setSelectedOpponent(opponent.player_id);
+    setFeedback(`${opponent.display_name} davet ediliyor…`);
     setSeconds(ROUND_SECONDS);
     setResult(null);
     setMatchmakingSeconds(MATCHMAKING_SECONDS);
 
     try {
-      const nextRoom = await findOrCreateDuelRoom(playerId);
+      const nextRoom = await createDuelInvitation(playerId, opponent.player_id);
       if (requestId !== matchmakingRequestId.current) return;
       setRoom(nextRoom);
-      if (nextRoom.status === 'playing' && nextRoom.ends_at) {
-        const remaining = Math.max(
-          0,
-          Math.ceil((Date.parse(nextRoom.ends_at) - Date.now()) / 1000),
-        );
-        secondsRef.current = remaining;
-        setSeconds(remaining);
-        setFeedback('Rakip bulundu. Kelimeleri toplamaya başla.');
-      } else {
-        setFeedback('Rakip bekleniyor…');
-      }
+      trackEvent('duel_started', {
+        mode: 'invitation',
+        opponentId: opponent.player_id,
+      });
+      setFeedback(
+        `${opponent.display_name} davet edildi. Kabul etmesi bekleniyor…`,
+      );
     } catch (reason) {
       if (requestId !== matchmakingRequestId.current) return;
       setRoomError(
-        reason instanceof Error
-          ? reason.message
-          : 'Yeni düello başlatılamadı.',
+        reason instanceof Error ? reason.message : 'Yeni düello başlatılamadı.',
       );
     }
-  }, [playerId]);
+  }, [activePlayers, loadingPlayers, playerId]);
+  const syncRemaining = useCallback((endsAt: string | null) => {
+    const endTime = endsAt ? Date.parse(endsAt) : Number.NaN;
+    const remaining = Number.isFinite(endTime)
+      ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+      : 0;
+    secondsRef.current = remaining;
+    setSeconds(current => (current === remaining ? current : remaining));
+    return remaining;
+  }, []);
+  const startQuickMatch = useCallback(
+    async (allowExistingRoom = false) => {
+      if (loadingPlayers || (room && !allowExistingRoom)) return;
+      const requestId = ++matchmakingRequestId.current;
+      setRoom(null);
+      setRoomError('');
+      setIsQuickMatch(true);
+      setSelectedOpponent(null);
+      setEvents([]);
+      setSelected([]);
+      setResult(null);
+      setFeedback('Hızlı eşleşme aranıyor…');
+      try {
+        const nextRoom = await findOrCreateDuelRoom(playerId);
+        if (requestId !== matchmakingRequestId.current) return;
+        setRoom(nextRoom);
+        setFeedback(
+          nextRoom.status === 'playing'
+            ? 'Rakip bulundu. Kelimeleri toplamaya başla.'
+            : 'Rakip aranıyor…',
+        );
+        if (nextRoom.status === 'playing') syncRemaining(nextRoom.ends_at);
+        trackEvent('duel_started', { mode: 'quick_match' });
+      } catch (reason) {
+        setIsQuickMatch(false);
+        setRoomError(
+          reason instanceof Error
+            ? reason.message
+            : 'Hızlı eşleşme başlatılamadı.',
+        );
+      }
+    },
+    [loadingPlayers, playerId, room, syncRemaining],
+  );
+
+  const startRematch = useCallback(() => {
+    // Sonuç ekranındaki yeni düello, tek taraflı davet göndermemeli.
+    // Her iki oyuncu da bu kuyruğa girerse find_or_create_duel_room onları
+    // otomatik eşleştirir; karşı tarafa kabul butonu gösterilmez.
+    setResult(null);
+    setRoom(null);
+    setEvents([]);
+    setSelected([]);
+    setSelectedOpponent(null);
+    startQuickMatch(true);
+  }, [startQuickMatch]);
   const exitDuel = useCallback(async () => {
     const roomToCancel = room;
     if (
-      isQuickMatch &&
       roomToCancel?.status === 'waiting' &&
       roomToCancel.player_one_id === playerId
     ) {
-      cancelWaitingDuel(roomToCancel.id, playerId).catch(() => undefined);
+      await cancelWaitingDuel(roomToCancel.id, playerId).catch(() => undefined);
+    } else if (
+      roomToCancel?.status === 'playing' &&
+      (roomToCancel.player_one_id === playerId ||
+        roomToCancel.player_two_id === playerId)
+    ) {
+      await forfeitDuel(roomToCancel.id, playerId).catch(() => undefined);
     }
     matchmakingRequestId.current += 1;
     selectedRef.current = [];
@@ -176,7 +251,38 @@ export function DuelScreen({ navigation, route }: Props) {
     setSeconds(ROUND_SECONDS);
     setResult(null);
     setFeedback('Düello arenası hazır.');
-  }, [isQuickMatch, playerId, room]);
+  }, [playerId, room]);
+  const requestExit = useCallback(() => {
+    if (!room && !isQuickMatch && !result) {
+      navigation.goBack();
+      return;
+    }
+    setExitConfirmVisible(true);
+  }, [isQuickMatch, navigation, result, room]);
+  const confirmExit = useCallback(() => {
+    setExitConfirmVisible(false);
+    const isMatchmaking = isQuickMatch || room?.status === 'waiting';
+    if (isMatchmaking) {
+      // Arama ekranından çıkarken Düello ekranını kapatma; aramayı iptal edip
+      // aynı ekranın lobi görünümüne dön.
+      void exitDuel();
+      return;
+    }
+    exitDuel().finally(() => navigation.goBack());
+  }, [exitDuel, isQuickMatch, navigation, room?.status]);
+  const handleBack = requestExit;
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        requestExit();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [requestExit]);
+
   const appendEvents = useCallback((incoming: DuelEvent | DuelEvent[]) => {
     const additions = Array.isArray(incoming) ? incoming : [incoming];
     setEvents(currentEvents => {
@@ -188,15 +294,6 @@ export function DuelScreen({ navigation, route }: Props) {
         ? [...currentEvents, ...uniqueAdditions]
         : currentEvents;
     });
-  }, []);
-  const syncRemaining = useCallback((endsAt: string | null) => {
-    const endTime = endsAt ? Date.parse(endsAt) : Number.NaN;
-    const remaining = Number.isFinite(endTime)
-      ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
-      : 0;
-    secondsRef.current = remaining;
-    setSeconds(current => (current === remaining ? current : remaining));
-    return remaining;
   }, []);
   const resolveDuel = useCallback(
     async (roomId: string) => {
@@ -210,14 +307,25 @@ export function DuelScreen({ navigation, route }: Props) {
         const finalEvents = await fetchDuelEvents(roomId);
         appendEvents(finalEvents);
         setResult(ownResult.result);
+        trackEvent('duel_finished', {
+          result: ownResult.result,
+          playerScore: ownResult.score,
+        });
         game.finishDuel(ownResult.result);
       } catch (reason) {
+        const message =
+          reason instanceof Error ? reason.message : 'Maç sonucu alınamadı.';
         setFeedback(
-          reason instanceof Error
-            ? reason.message
-            : 'Maç sonucu alınamadı. Tekrar deneniyor…',
+          message.includes('column reference') || message.includes('function')
+            ? message
+            : `${message} Tekrar deneniyor…`,
         );
-        setTimeout(() => setFinishAttempt(attempt => attempt + 1), 1500);
+        if (
+          !message.includes('column reference') &&
+          !message.includes('function')
+        ) {
+          setTimeout(() => setFinishAttempt(attempt => attempt + 1), 1500);
+        }
       } finally {
         finishingRef.current = false;
       }
@@ -276,8 +384,7 @@ export function DuelScreen({ navigation, route }: Props) {
             return;
           }
           const createdAt = invitation ? Date.parse(invitation.created_at) : 0;
-          const isNewInvitation =
-            createdAt >= screenOpenedAt.current - 2_000;
+          const isNewInvitation = createdAt >= screenOpenedAt.current - 2_000;
           const openedFromNotification =
             invitation?.id === invitationIdFromNotification;
           if (
@@ -333,6 +440,7 @@ export function DuelScreen({ navigation, route }: Props) {
     try {
       const started = await acceptDuelInvitationForPlayer(room.id, playerId);
       setRoom(started);
+      trackEvent('duel_started', { mode: 'invitation_accept' });
       setFeedback('Rakip bulundu. Kelimeleri toplamaya başla.');
       syncRemaining(started.ends_at);
     } catch (reason) {
@@ -357,36 +465,40 @@ export function DuelScreen({ navigation, route }: Props) {
   }, [result, room, syncRemaining]);
 
   useEffect(() => {
-    if (
-      !room ||
-      room.status !== 'waiting' ||
-      (isQuickMatch && matchmakingSeconds === 0)
-    )
-      return;
+    if (!room || room.status !== 'waiting') return;
+    const roomId = room.id;
     const timer = setInterval(() => {
       const checkRoom = async () => {
-        if (isQuickMatch) {
-          const matched = await findOrCreateDuelRoom(playerId).catch(
-            () => null,
-          );
-          if (matched?.status === 'playing') {
-            setRoom(matched);
-            setFeedback('Rakip bulundu. Kelimeleri toplamaya başla.');
-            syncRemaining(matched.ends_at);
-            return;
-          }
-        }
-        const nextRoom = await fetchDuelRoom(room.id).catch(() => undefined);
+        const nextRoom = await fetchDuelRoom(roomId).catch(() => undefined);
+        if (currentRoomIdRef.current !== roomId) return;
         if (nextRoom?.status === 'playing') {
           setRoom(nextRoom);
           setFeedback('Rakip bulundu. Kelimeleri toplamaya başla.');
           syncRemaining(nextRoom.ends_at);
+          return;
+        }
+        // 10 saniyelik oyun penceresi polling aralığında kaçırılmış olabilir.
+        // Oda bitmiş ama iki oyuncu da atanmışsa sonuç ekranına doğru ilerle.
+        if (nextRoom?.status === 'finished' && nextRoom.player_two_id) {
+          setRoom({ ...nextRoom, status: 'playing' });
+          setFeedback('Maç sonucu hesaplanıyor…');
+          syncRemaining(nextRoom.ends_at);
+          return;
+        }
+        const playingRoom = await fetchPlayingDuelRoomForPlayer(playerId).catch(
+          () => undefined,
+        );
+        if (currentRoomIdRef.current !== roomId) return;
+        if (playingRoom) {
+          setRoom(playingRoom);
+          setFeedback('Rakip bulundu. Kelimeleri toplamaya başla.');
+          syncRemaining(playingRoom.ends_at);
         }
       };
       checkRoom();
-    }, 2000);
+    }, 1000);
     return () => clearInterval(timer);
-  }, [isQuickMatch, matchmakingSeconds, playerId, room, syncRemaining]);
+  }, [playerId, room, syncRemaining]);
 
   useEffect(() => {
     if (!isQuickMatch || !room || room.status !== 'waiting') return;
@@ -450,6 +562,7 @@ export function DuelScreen({ navigation, route }: Props) {
     resolveDuel(room.id);
   }, [finishAttempt, resolveDuel, result, room, seconds]);
   const interactive = room?.status === 'playing' && seconds > 0 && !result;
+  const resultReward = result ? DUEL_REWARDS[result] : null;
 
   const pick = (x: number, y: number) => {
     const index = positions.findIndex(
@@ -469,6 +582,10 @@ export function DuelScreen({ navigation, route }: Props) {
     if (!word || !interactive || !room) return;
     try {
       const event = await submitDuelWord(room.id, playerId, word);
+      trackEvent('duel_word_submitted', {
+        wordLength: word.length,
+        points: event.points,
+      });
       lastEventId.current = Math.max(lastEventId.current, event.id);
       appendEvents(event);
       gameFeedback('success');
@@ -516,10 +633,10 @@ export function DuelScreen({ navigation, route }: Props) {
   return (
     <View style={s.root}>
       <BackHeader
-        title="Düello Arenası"
-        tag="CANLI KARŞILAŞMA"
+        title="Düello"
+        tag="SÜRELİ RAKİP TURU"
         color={C.coral}
-        onBack={navigation.goBack}
+        onBack={handleBack}
       />
       {room?.status !== 'playing' ? (
         <View style={s.waiting}>
@@ -527,10 +644,7 @@ export function DuelScreen({ navigation, route }: Props) {
             <>
               <Text style={s.waitingTitle}>Düello başlatılamadı</Text>
               <Text style={s.waitingCopy}>{roomError}</Text>
-              <Pressable
-                onPress={startNewDuel}
-                style={s.retryButton}
-              >
+              <Pressable onPress={startNewDuel} style={s.retryButton}>
                 <Text style={s.retryButtonText}>TEKRAR DENE</Text>
               </Pressable>
             </>
@@ -565,7 +679,7 @@ export function DuelScreen({ navigation, route }: Props) {
               </Text>
               {isQuickMatch && matchmakingSeconds === 0 ? (
                 <Pressable
-                  onPress={exitDuel}
+                  onPress={requestExit}
                   style={({ pressed }) => [s.retryButton, pressed && s.pressed]}
                 >
                   <Text style={s.retryButtonText}>ÇIKIŞ YAP</Text>
@@ -593,7 +707,7 @@ export function DuelScreen({ navigation, route }: Props) {
                         ŞİMDİ AKTİF
                       </Text>
                     </View>
-                    <Text style={s.lobbyTitle}>Rakibini seç, oyuna başla.</Text>
+                    <Text style={s.lobbyTitle}>Rakibini seç, turu başlat.</Text>
                     <Text style={s.lobbyCopy}>
                       Aynı anda çevrimiçi olan oyuncular burada görünür. Birini
                       seçtiğinde davet gönderilir.
@@ -601,9 +715,20 @@ export function DuelScreen({ navigation, route }: Props) {
                     <View style={s.lobbyFooter}>
                       <Text style={s.lobbyFooterLabel}>10 SANİYE</Text>
                       <Text style={s.lobbyFooterHint}>
-                        Hızlı kelimeler, canlı rekabet
+                      10 saniye, tek hedef: daha çok kelime
                       </Text>
                     </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Hızlı eşleşme başlat"
+                      onPress={() => void startQuickMatch()}
+                      style={({ pressed }) => [
+                        s.quickMatchButton,
+                        pressed && s.pressed,
+                      ]}
+                    >
+                      <Text style={s.quickMatchButtonText}>HIZLI EŞLEŞME</Text>
+                    </Pressable>
                   </View>
                   <View style={s.playersHeader}>
                     <View style={s.playersHeaderCopy}>
@@ -702,6 +827,7 @@ export function DuelScreen({ navigation, route }: Props) {
             </View>
           </View>
           <View style={s.wordBox}>
+            <Text style={s.wordLabel}>SEÇİLEN KELİME</Text>
             <Text style={s.word}>{current}</Text>
           </View>
           <View
@@ -761,6 +887,51 @@ export function DuelScreen({ navigation, route }: Props) {
         </View>
       ) : null}
       <Modal
+        visible={exitConfirmVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setExitConfirmVisible(false)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.confirmCard}>
+            <View style={s.confirmIcon}>
+              <Text style={s.confirmIconText}>!</Text>
+            </View>
+            <Text style={s.confirmTitle}>Düellodan çıkılsın mı?</Text>
+            <Text style={s.confirmCopy}>
+              {room?.status === 'playing'
+                ? 'Şimdi çıkarsan bu maçı kaybetmiş sayılacaksın.'
+                : 'Arama iptal edilip Düello ana ekranına dönülecek.'}
+            </Text>
+            <View style={s.confirmActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Düelloda kal"
+                onPress={() => setExitConfirmVisible(false)}
+                style={({ pressed }) => [
+                  s.confirmStayButton,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.confirmStayText}>KAL</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Düellodan çık"
+                onPress={confirmExit}
+                style={({ pressed }) => [
+                  s.confirmExitButton,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.confirmExitText}>ÇIK</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
         visible={Boolean(result)}
         transparent
         animationType="fade"
@@ -815,10 +986,31 @@ export function DuelScreen({ navigation, route }: Props) {
                 <Text style={s.resultValue}>{opponentScore}</Text>
               </View>
             </View>
+            {resultReward ? (
+              <View style={s.resultRewards}>
+                <View style={s.resultReward}>
+                  <Text style={s.resultRewardLabel}>KAZANILAN XP</Text>
+                  <Text style={s.resultRewardValue}>+{resultReward.xp}</Text>
+                </View>
+                <View style={s.resultRewardDivider} />
+                <View style={s.resultReward}>
+                  <Text style={s.resultRewardLabel}>LİG PUANI</Text>
+                  <Text
+                    style={[
+                      s.resultRewardValue,
+                      resultReward.league < 0 && s.resultRewardLoss,
+                    ]}
+                  >
+                    {resultReward.league > 0 ? '+' : ''}
+                    {resultReward.league}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Yeni düello başlat"
-              onPress={startNewDuel}
+              onPress={startRematch}
               hitSlop={6}
               style={({ pressed }) => [
                 s.newRoundButton,
@@ -828,7 +1020,12 @@ export function DuelScreen({ navigation, route }: Props) {
               <Text style={s.newRoundButtonText}>YENİ DÜELLO</Text>
               <Text style={s.newRoundButtonIcon}>↗</Text>
             </Pressable>
-            <Pressable onPress={exitDuel} style={s.exitAction}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sonuç ekranından çık"
+              onPress={confirmExit}
+              style={({ pressed }) => [s.exitAction, pressed && s.pressed]}
+            >
               <Text style={s.exitActionText}>ÇIKIŞ YAP</Text>
             </Pressable>
           </View>
@@ -929,9 +1126,9 @@ const s = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 24,
     borderCurve: 'continuous',
-    backgroundColor: '#153B61',
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: 'rgba(110, 198, 255, .18)',
+    borderColor: C.border,
   },
   lobbyHeroTop: {
     flexDirection: 'row',
@@ -992,10 +1189,19 @@ const s = StyleSheet.create({
     marginTop: 18,
     paddingTop: 13,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,.10)',
+    borderTopColor: C.border,
   },
   lobbyFooterLabel: { color: C.gold, fontSize: 10, fontWeight: '900' },
   lobbyFooterHint: { color: C.muted, fontSize: 10, marginLeft: 8 },
+  quickMatchButton: {
+    marginTop: 14,
+    minHeight: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.coral,
+  },
+  quickMatchButtonText: { color: C.ink, fontSize: 11, fontWeight: '900' },
   playersHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1041,7 +1247,7 @@ const s = StyleSheet.create({
     borderCurve: 'continuous',
     backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.08)',
+    borderColor: C.border,
   },
   emptyPlayersTitle: {
     color: C.text,
@@ -1068,7 +1274,7 @@ const s = StyleSheet.create({
     padding: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.06)',
+    borderColor: C.border,
   },
   playerAvatar: {
     width: 42,
@@ -1115,10 +1321,18 @@ const s = StyleSheet.create({
     paddingBottom: 30,
     overflow: 'hidden',
   },
-  matchCenter: { alignItems: 'center', gap: 5, minWidth: 96 },
+  matchCenter: {
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 108,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,138,76,.12)',
+  },
   timer: {
     color: C.coral,
-    fontSize: 11,
+    fontSize: 24,
     fontWeight: '900',
     textAlign: 'center',
   },
@@ -1132,16 +1346,16 @@ const s = StyleSheet.create({
   },
   score: { alignItems: 'center', minWidth: 90 },
   label: { color: C.muted, fontSize: 10, fontWeight: '900' },
-  scoreValue: { color: C.text, fontSize: 28, fontWeight: '900', marginTop: 3 },
-  vs: { color: C.coral, fontWeight: '900' },
+  scoreValue: { color: C.text, fontSize: 24, fontWeight: '900', marginTop: 3 },
+  vs: { color: C.muted, fontSize: 10, fontWeight: '900' },
   lists: { flexDirection: 'row', gap: 10 },
   list: {
     flex: 1,
     flexBasis: 0,
     width: 0,
     minWidth: 0,
-    height: 148,
-    padding: 12,
+    height: 118,
+    padding: 10,
     borderRadius: 16,
     backgroundColor: C.surface,
     overflow: 'hidden',
@@ -1155,13 +1369,20 @@ const s = StyleSheet.create({
   listWord: { color: C.text, fontSize: 13, fontWeight: '800', lineHeight: 21 },
   points: { color: C.mint, fontSize: 11 },
   wordBox: {
-    height: 54,
+    height: 62,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.10)',
+    borderColor: 'rgba(22,214,196,.32)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  wordLabel: {
+    color: C.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 2,
   },
   word: { color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: 2 },
   wheel: {
@@ -1206,18 +1427,84 @@ const s = StyleSheet.create({
   resultCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#162842',
+    backgroundColor: C.surface,
     borderRadius: 30,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.12)',
+    borderColor: C.border,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
   },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: C.surface,
+    borderRadius: 26,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  confirmIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,138,76,.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,138,76,.42)',
+    marginBottom: 14,
+  },
+  confirmIconText: { color: C.coral, fontSize: 28, fontWeight: '900' },
+  confirmTitle: {
+    color: C.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  confirmCopy: {
+    color: C.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 9,
+    marginBottom: 22,
+  },
+  confirmActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confirmStayButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,.12)',
+  },
+  confirmStayText: { color: C.text, fontSize: 13, fontWeight: '900' },
+  confirmExitButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.coral,
+  },
+  confirmExitText: { color: C.ink, fontSize: 13, fontWeight: '900' },
   resultIcon: {
     width: 72,
     height: 72,
@@ -1284,6 +1571,37 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
   resultVs: { color: C.coral, fontWeight: '900' },
+  resultRewards: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+    marginTop: 18,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,.08)',
+  },
+  resultReward: { alignItems: 'center', minWidth: 96 },
+  resultRewardLabel: {
+    color: C.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  resultRewardValue: {
+    color: C.mint,
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  resultRewardLoss: { color: C.coral },
+  resultRewardDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,.12)',
+  },
   newRoundButton: {
     width: '100%',
     minHeight: 56,

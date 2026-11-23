@@ -13,8 +13,9 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../../App';
-import { BackHeader, C, gameFeedback } from '../ui';
+import { BackHeader, C as GlobalC, gameFeedback } from '../ui';
 import { useGame } from '../gameState';
 import type { ClassicPuzzle } from '../game/classicPuzzles';
 import {
@@ -26,8 +27,22 @@ import {
   createClassicEngineState,
   submitClassicWord,
 } from '../game/classicEngine';
+import { trackEvent } from '../services/analyticsService';
+import { showCheckpointAd } from '../services/adService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Classic'>;
+type FeedbackTone = 'neutral' | 'success' | 'error';
+// Klasik bulmaca ekranı, oyuncunun odaklanmasını sağlayan sabit koyu oyun yüzeyini kullanır.
+const C = {
+  ...GlobalC,
+  bg: '#101729',
+  surface: '#17243B',
+  raised: '#213452',
+  text: '#FFFDF5',
+  muted: '#AAB9CC',
+  ink: '#081426',
+  cream: '#FFF5D8',
+};
 const WHEEL_SIZE = 314;
 const LETTER_SIZE = 72;
 const RADIUS = 112;
@@ -94,6 +109,7 @@ const isPuzzleBoardComplete = (
 export function ClassicScreen({ navigation }: Props) {
   const game = useGame();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   // Base the whole game layout on the reference 390x844 viewport.
   // Width and height use the same scale so the composition never gets squashed.
   const referenceScale = Math.min(screenWidth / 390, screenHeight / 844);
@@ -117,10 +133,15 @@ export function ClassicScreen({ navigation }: Props) {
   const animationPuzzleRef = useRef<string | null>(null);
   const [solved, setSolved] = useState<string[]>([]);
   const [bonusWords, setBonusWords] = useState<string[]>([]);
+  const [hintUses, setHintUses] = useState(0);
   const [revealedCells, setRevealedCells] = useState<Record<string, string>>(
     {},
   );
   const [feedback, setFeedback] = useState('');
+  const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>('neutral');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [canRetrySubmit, setCanRetrySubmit] = useState(false);
+  const feedbackAnimation = useRef(new Animated.Value(0)).current;
   const [clueMessage, setClueMessage] = useState<string | null>(null);
   const [isClueVisible, setIsClueVisible] = useState(false);
   const [isClueLoading, setIsClueLoading] = useState(false);
@@ -142,8 +163,11 @@ export function ClassicScreen({ navigation }: Props) {
     setSelected([]);
     setSolved([]);
     setBonusWords([]);
+    setHintUses(0);
     setRevealedCells({});
     setFeedback('');
+    setIsSubmitting(false);
+    setCanRetrySubmit(false);
     setClueMessage(null);
     setIsClueLoading(false);
     setIsClueVisible(false);
@@ -156,6 +180,11 @@ export function ClassicScreen({ navigation }: Props) {
         setPuzzle(result.puzzle);
         setTotalPuzzles(result.totalPuzzles);
         setWheelLetters(shuffleLetters(result.puzzle.letters));
+        trackEvent('level_started', {
+          level,
+          puzzleId: result.puzzle.id,
+          wordCount: result.puzzle.words.length,
+        });
       })
       .catch(error => {
         if (active)
@@ -179,6 +208,7 @@ export function ClassicScreen({ navigation }: Props) {
     setSelected([]);
     setSolved([]);
     setBonusWords([]);
+    setHintUses(0);
     setRevealedCells({});
   }, [advanceRequested, level, totalPuzzles]);
   useEffect(() => {
@@ -217,10 +247,29 @@ export function ClassicScreen({ navigation }: Props) {
       return;
     }
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    advanceTimerRef.current = setTimeout(() => {
+    advanceTimerRef.current = setTimeout(async () => {
       advanceTimerRef.current = null;
+      await showCheckpointAd(level);
       setAdvanceRequested(true);
     }, 900);
+  };
+  const showFeedback = (message: string, tone: FeedbackTone = 'neutral') => {
+    setFeedback(message);
+    setFeedbackTone(tone);
+    feedbackAnimation.stopAnimation();
+    feedbackAnimation.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackAnimation, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(feedbackAnimation, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
   const triggerSuccessBurst = () => {
     setSuccessBurstVisible(true);
@@ -235,10 +284,10 @@ export function ClassicScreen({ navigation }: Props) {
     totalPuzzles > 0 && game.classicCompletedLevels.length >= totalPuzzles;
   if (allCompleted)
     return (
-      <LinearGradient colors={[C.bg, '#123B52', '#0E6B73']} style={s.root}>
+      <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
         <BackHeader
-          title=""
-          tag=""
+          title="Klasik Kelime"
+          tag="TÜM BÖLÜMLER TAMAM"
           color={C.mint}
           minimal
           onBack={navigation.goBack}
@@ -254,10 +303,10 @@ export function ClassicScreen({ navigation }: Props) {
     );
   if (!puzzle)
     return (
-      <LinearGradient colors={[C.bg, '#123B52', '#0E6B73']} style={s.root}>
+      <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
         <BackHeader
-          title=""
-          tag=""
+          title="Klasik Kelime"
+          tag="BÖLÜM YÜKLENİYOR"
           color={C.mint}
           minimal
           onBack={navigation.goBack}
@@ -288,20 +337,25 @@ export function ClassicScreen({ navigation }: Props) {
   const boardInset = Math.max(3, Math.round(4 * uiScale));
   const boardPadding = boardInset * 2;
   const boardOuterPadding = Math.round(10 * uiScale);
-  const minimumWheelSize = 190;
-  const reservedHeader = 119;
-  // Selection panel: padding + clue + word display + margins + utility row.
-  // Keep this reservation explicit so the screen never needs to scroll.
-  const reservedSelection = 184;
-  const reservedBottom = 24;
+  // Give the wheel a little more of the vertical space while keeping the
+  // board responsive on shorter iPhones.
+  const minimumWheelSize = 220;
+  const maximumWheelSize = Math.round(WHEEL_SIZE * Math.min(1, uiScale + 0.08));
+  // BackHeader = safe-area top + 42px button + 14px bottom padding.
+  const headerHeight = insets.top + 42 + 14;
+  const contentPadding = 12 + 24;
+  const boardMargin = Math.round(4 * uiScale);
+  // Selection panel without the wheel: clue button, word display, feedback,
+  // utility row, margins and card padding. Keep this larger than the visual
+  // minimum so the bottom controls never get pushed below the viewport.
+  const reservedSelection = 208;
+  const availableContentHeight = Math.max(
+    0,
+    screenHeight - headerHeight - contentPadding,
+  );
   const maximumBoardHeight = Math.max(
     140,
-    screenHeight -
-      reservedHeader -
-      12 -
-      reservedSelection -
-      minimumWheelSize -
-      reservedBottom,
+    availableContentHeight - reservedSelection - minimumWheelSize - boardMargin,
   );
   const sizingPitch = Math.max(
     22,
@@ -317,13 +371,11 @@ export function ClassicScreen({ navigation }: Props) {
     Math.max(
       minimumWheelSize,
       Math.min(
-        WHEEL_SIZE * uiScale,
-        screenHeight -
-          reservedHeader -
+        maximumWheelSize,
+        availableContentHeight -
           sizingBoardHeight -
-          12 -
-          reservedSelection -
-          reservedBottom,
+          boardMargin -
+          reservedSelection,
       ),
     ),
   );
@@ -338,6 +390,7 @@ export function ClassicScreen({ navigation }: Props) {
     };
   });
   const pick = (x: number, y: number) => {
+    if (submittingRef.current) return;
     const index = positions.findIndex(
       point => Math.hypot(point.x - x, point.y - y) < letterSize * 0.63,
     );
@@ -361,13 +414,17 @@ export function ClassicScreen({ navigation }: Props) {
       .join('');
     if (!candidate) return;
     submittingRef.current = true;
-    setFeedback('Kelime API’de doğrulanıyor…');
+    setIsSubmitting(true);
+    setCanRetrySubmit(false);
+    showFeedback('Kelime kontrol ediliyor…');
     let valid = false;
     try {
       valid = await validateWord(candidate);
     } catch {
       submittingRef.current = false;
-      setFeedback('Kelime API’ye ulaşılamadı. Lütfen tekrar dene.');
+      setIsSubmitting(false);
+      setCanRetrySubmit(true);
+      showFeedback('Kelime kontrol edilemedi.', 'error');
       return;
     }
     const result = submitClassicWord(
@@ -381,33 +438,56 @@ export function ClassicScreen({ navigation }: Props) {
       candidate,
       valid,
     );
+    trackEvent('word_submitted', {
+      level,
+      wordLength: result.word.length,
+      outcome: result.kind,
+    });
     setSolved(result.state.solvedWords);
     setBonusWords(result.state.bonusWords);
     setRevealedCells(result.state.revealedCells);
     if (result.kind === 'target') {
+      trackEvent('word_solved', { level, wordLength: result.word.length });
       gameFeedback('success');
       game.solveClassic();
       if (result.complete) {
+        trackEvent('level_completed', {
+          level,
+          solvedWords: result.state.solvedWords.length,
+          bonusWords: result.state.bonusWords.length,
+        });
         game.completeClassicLevel(level);
         triggerSuccessBurst();
         requestAdvance();
-      } else setFeedback(`Doğru! ${result.word} · +25 XP`);
+      } else showFeedback(`Doğru! ${result.word} · +25 XP`, 'success');
     } else if (result.kind === 'bonus') {
       gameFeedback('success');
       game.award(5);
-      setFeedback(`Sözlük kelimesi! ${result.word} · +5 XP`);
+      showFeedback(`Bonus kelime! ${result.word} · +5 XP`, 'success');
     } else if (result.kind === 'duplicate') {
       gameFeedback('error');
-      setFeedback('Bu kelimeyi zaten buldun.');
+      showFeedback('Bu kelimeyi zaten buldun.', 'error');
     } else {
+      trackEvent('word_invalid', { level, wordLength: result.word.length });
       gameFeedback('error');
-      setFeedback('');
+      showFeedback(`“${result.word}” geçerli bir kelime değil.`, 'error');
     }
     selectedRef.current = [];
     setSelected([]);
     submittingRef.current = false;
+    setIsSubmitting(false);
+    setCanRetrySubmit(false);
   };
   const showHint = () => {
+    const hintLimit = puzzle.design?.hintLimit;
+    if (
+      hintLimit !== null &&
+      hintLimit !== undefined &&
+      hintUses >= hintLimit
+    ) {
+      setFeedback('Bu bölümdeki ipucu hakkın bitti.');
+      return;
+    }
     const hiddenSlots = puzzle.words
       .filter(word => !solved.includes(word))
       .flatMap(word => puzzle.placements[word])
@@ -423,7 +503,9 @@ export function ClassicScreen({ navigation }: Props) {
       return;
     }
     const key = `${hiddenSlot.row}:${hiddenSlot.column}`;
+    trackEvent('hint_used', { level, cost: HINT_COST });
     const nextRevealedCells = { ...revealedCells, [key]: hiddenSlot.letter };
+    setHintUses(value => value + 1);
     setRevealedCells(nextRevealedCells);
     if (isPuzzleBoardComplete(puzzle, nextRevealedCells)) {
       game.completeClassicLevel(level);
@@ -509,12 +591,12 @@ export function ClassicScreen({ navigation }: Props) {
     solved.length === puzzle.words.length ||
     isPuzzleBoardComplete(puzzle, revealedCells);
   return (
-    <LinearGradient colors={[C.bg, '#123B52', '#0E6B73']} style={s.root}>
+    <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
       <View style={s.cloud} />
       <View style={s.hill} />
       <BackHeader
         title=""
-        tag={`BÖLÜM ${level + 1}`}
+        tag={`KLASİK · BÖLÜM ${level + 1}${puzzle.design?.isRelief ? ' · RAHAT' : ''}`}
         color={C.mint}
         tagOnly
         onBack={navigation.goBack}
@@ -618,7 +700,7 @@ export function ClassicScreen({ navigation }: Props) {
             style={[s.utilityButton, s.clueButton]}
           >
             <Text style={s.utilityText}>🔎</Text>
-            <Text style={s.utilityLabel}>Kelime ipucu</Text>
+            <Text style={s.utilityLabel}>Konu ipucu</Text>
           </TouchableOpacity>
           <View
             style={[
@@ -632,6 +714,53 @@ export function ClassicScreen({ navigation }: Props) {
           >
             {current ? <Text style={s.wordDisplayText}>{current}</Text> : null}
           </View>
+          <Animated.View
+            style={{
+              opacity: feedback ? 1 : 0,
+              transform: [
+                {
+                  translateX: feedbackAnimation.interpolate({
+                    inputRange: [0, 0.25, 0.5, 0.75, 1],
+                    outputRange: [0, -4, 4, -2, 0],
+                  }),
+                },
+                {
+                  scale: feedbackAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.96, 1],
+                  }),
+                },
+              ],
+            }}
+          >
+            <View style={s.feedbackRow}>
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color={C.mint} />
+              ) : null}
+              <Text
+                style={[
+                  s.feedback,
+                  feedbackTone === 'success' && s.feedbackSuccess,
+                  feedbackTone === 'error' && s.feedbackError,
+                ]}
+              >
+                {feedback}
+              </Text>
+              {canRetrySubmit ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Kelimeyi tekrar kontrol et"
+                  onPress={finish}
+                  style={({ pressed }) => [
+                    s.retrySubmit,
+                    pressed && s.retrySubmitPressed,
+                  ]}
+                >
+                  <Text style={s.retrySubmitText}>TEKRAR DENE</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Animated.View>
           <View
             ref={wheelRef}
             onLayout={() =>
@@ -698,7 +827,12 @@ export function ClassicScreen({ navigation }: Props) {
           <View style={s.utilityRow}>
             <TouchableOpacity
               onPress={showHint}
-              disabled={complete}
+              disabled={
+                complete ||
+                (puzzle.design?.hintLimit !== null &&
+                  puzzle.design?.hintLimit !== undefined &&
+                  hintUses >= puzzle.design.hintLimit)
+              }
               accessibilityLabel="Harf al"
               style={[
                 s.utilityButton,
@@ -833,7 +967,7 @@ const s = StyleSheet.create({
     width: 300,
     height: 120,
     borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,.10)',
+    backgroundColor: C.surface,
     right: -110,
     top: 290,
   },
@@ -842,7 +976,7 @@ const s = StyleSheet.create({
     width: 620,
     height: 260,
     borderRadius: 300,
-    backgroundColor: '#0E6B73',
+    backgroundColor: C.raised,
     bottom: -170,
     left: -100,
     opacity: 0.7,
@@ -877,12 +1011,12 @@ const s = StyleSheet.create({
     borderColor: 'rgba(248,199,68,.3)',
   },
   xpIcon: { color: C.gold, fontSize: 10, marginRight: 6 },
-  xpText: { color: '#FFF2C5', fontSize: 12, fontWeight: '900' },
+  xpText: { color: C.text, fontSize: 12, fontWeight: '900' },
   boardCard: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,.08)',
+    backgroundColor: C.surface,
     borderRadius: 22,
     paddingVertical: 18,
     marginBottom: 12,
@@ -916,7 +1050,7 @@ const s = StyleSheet.create({
   selectionCard: {
     width: '100%',
     alignItems: 'center',
-    backgroundColor: 'rgba(5,22,55,.62)',
+    backgroundColor: C.surface,
     borderRadius: 26,
     paddingTop: 14,
     paddingBottom: 14,
@@ -936,7 +1070,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255,255,255,.16)',
   },
   wordDisplayText: {
-    color: 'white',
+    color: C.text,
     fontSize: 21,
     fontWeight: '900',
     letterSpacing: 2,
@@ -1001,7 +1135,7 @@ const s = StyleSheet.create({
     minWidth: 0,
   },
   shuffle: {
-    color: '#D9F4FF',
+    color: C.muted,
     fontSize: 14,
     fontWeight: '900',
     padding: 12,
@@ -1033,19 +1167,39 @@ const s = StyleSheet.create({
   },
   wordBadgeReady: { backgroundColor: C.mint },
   wordBadgeText: {
-    color: 'white',
+    color: C.ink,
     fontWeight: '900',
     fontSize: 15,
     letterSpacing: 1,
   },
   feedback: {
-    color: '#D9F4FF',
-    marginTop: 8,
+    color: C.muted,
+    marginTop: 7,
     fontWeight: '700',
     fontSize: 12,
     textAlign: 'center',
     minHeight: 18,
   },
+  feedbackRow: {
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  feedbackSuccess: { color: C.mint },
+  feedbackError: { color: '#FF9B83' },
+  retrySubmit: {
+    minHeight: 28,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,155,131,.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,155,131,.34)',
+  },
+  retrySubmitPressed: { opacity: 0.7 },
+  retrySubmitText: { color: '#FFB09C', fontSize: 9, fontWeight: '900' },
   modalBackdrop: {
     flex: 1,
     alignItems: 'center',
@@ -1129,14 +1283,14 @@ const s = StyleSheet.create({
     textAlignVertical: 'center',
   },
   completionTitle: {
-    color: 'white',
+    color: C.text,
     fontSize: 24,
     fontWeight: '900',
     textAlign: 'center',
     marginTop: 20,
   },
   completionText: {
-    color: '#D9EEFF',
+    color: C.muted,
     fontSize: 14,
     textAlign: 'center',
     marginTop: 10,

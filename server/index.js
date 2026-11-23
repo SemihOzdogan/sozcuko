@@ -15,13 +15,154 @@ const normalize = value =>
     .toLocaleUpperCase('tr-TR');
 const blockedPuzzleWords = new Set(['ADIL', 'AHFAT', 'AHFATT', 'SEDALI']);
 const isGameWord = word =>
-  /^[A-ZÇĞİÖŞÜÂÎÛ]{4,6}$/u.test(word) &&
+  /^[A-ZÇĞİÖŞÜÂÎÛ]{3,7}$/u.test(word) &&
   !blockedPuzzleWords.has(word) &&
   !/(?:ILMEK|ILME|MAK|MEK|LEŞMEK|LEŞME|TIRMAK|TIRMA)$/u.test(word);
 const acceptedWords = words
   .filter(item => item.approved === true || item.source === 'tdk-autocomplete')
   .map(item => normalize(item.word))
   .filter(isGameWord);
+const commonWords = new Set([
+  'ABA',
+  'ADA',
+  'AĞA',
+  'AİLE',
+  'AKIL',
+  'ALAN',
+  'ANNE',
+  'ARABA',
+  'ARI',
+  'ARKA',
+  'AŞK',
+  'ATEŞ',
+  'AYAK',
+  'BAHÇE',
+  'BAHAR',
+  'BALIK',
+  'BABA',
+  'BEŞ',
+  'BİLGİ',
+  'BİNA',
+  'BİZ',
+  'BOŞ',
+  'BUZ',
+  'ÇAY',
+  'ÇOCUK',
+  'ÇORAP',
+  'DAĞ',
+  'DERS',
+  'DOST',
+  'EL',
+  'ELMA',
+  'EV',
+  'GECE',
+  'GÖL',
+  'GÖZ',
+  'GÜN',
+  'GÜNEŞ',
+  'HAVA',
+  'HAYAT',
+  'İKİ',
+  'İNSAN',
+  'İŞ',
+  'KAPI',
+  'KALEM',
+  'KALP',
+  'KARA',
+  'KAR',
+  'KEDİ',
+  'KELİME',
+  'KİTAP',
+  'KOL',
+  'KUŞ',
+  'MASA',
+  'MAVİ',
+  'MEKTUP',
+  'MİSAFİR',
+  'OKUL',
+  'OYUN',
+  'PARA',
+  'SAAT',
+  'SABAH',
+  'SES',
+  'SÖZ',
+  'SU',
+  'TAŞ',
+  'TOP',
+  'YAZ',
+  'YOL',
+]);
+const levelDesign = level => {
+  const section = level + 1;
+  const isRelief = section > 1 && section % 10 === 0;
+  if (section <= 5)
+    return {
+      band: 'tutorial',
+      minWordLength: 3,
+      maxWordLength: 4,
+      rarity: 'common',
+      isRelief,
+      hintLimit: null,
+      blockedLetters: [],
+      specialGoal: 'none',
+    };
+  if (section <= 10)
+    return {
+      band: 'varied',
+      minWordLength: 4,
+      maxWordLength: 4,
+      rarity: 'common',
+      isRelief,
+      hintLimit: isRelief ? 3 : 2,
+      blockedLetters: [],
+      specialGoal: 'none',
+    };
+  if (section <= 20)
+    return {
+      band: 'five-letter',
+      minWordLength: 5,
+      maxWordLength: 5,
+      rarity: isRelief ? 'varied' : 'less-common',
+      isRelief,
+      hintLimit: isRelief ? 3 : 2,
+      blockedLetters: [],
+      specialGoal: 'none',
+    };
+  if (section <= 35)
+    return {
+      band: 'mixed-five-six',
+      minWordLength: 5,
+      maxWordLength: 6,
+      rarity: isRelief ? 'varied' : 'less-common',
+      isRelief,
+      hintLimit: isRelief ? 3 : 2,
+      blockedLetters: [],
+      specialGoal: isRelief ? 'none' : 'limited-moves',
+    };
+  if (section <= 50)
+    return {
+      band: 'advanced',
+      minWordLength: 6,
+      maxWordLength: 7,
+      rarity: isRelief ? 'varied' : 'less-common',
+      isRelief,
+      hintLimit: isRelief ? 3 : 1,
+      blockedLetters: [],
+      specialGoal: isRelief ? 'none' : 'limited-moves',
+    };
+  return {
+    band: 'mixed',
+    minWordLength: 3,
+    maxWordLength: 7,
+    rarity: 'mixed',
+    isRelief,
+    hintLimit: isRelief ? 3 : 1,
+    blockedLetters: [],
+    specialGoal: isRelief ? 'none' : 'blocked-letters',
+  };
+};
+const findabilityScore = word =>
+  (commonWords.has(word) ? 2 : 0) - Math.max(0, word.length - 5);
 const shuffled = values => {
   const result = [...values];
   for (let index = result.length - 1; index > 0; index -= 1) {
@@ -50,33 +191,39 @@ const placement = (word, row, column, direction) =>
   );
 const createGeneratedPuzzles = targetCount => {
   const generated = [];
-  const usedBases = new Set(seedPuzzles.map(puzzle => puzzle.words[0]));
+  const usedBases = new Set();
   const basePool = shuffled(
-    acceptedWords.filter(word => word.length >= 5 && word.length <= 6),
+    [...acceptedWords].sort(
+      (a, b) => findabilityScore(b) - findabilityScore(a),
+    ),
   );
   const candidatePool = shuffled(acceptedWords);
-  let lastBase = seedPuzzles.at(-1)?.words[0] ?? '';
+  let lastBase = '';
   for (const base of basePool) {
-    if (generated.length >= targetCount || usedBases.has(base)) continue;
-    if (generated.length % 2 === 0 && !/[ÇĞİÖŞÜ]/u.test(base)) continue;
+    const level = generated.length;
+    if (level >= targetCount || usedBases.has(base)) continue;
+    const design = levelDesign(level);
     if (
-      lastBase &&
-      (base[0] === lastBase[0] || base.slice(0, 2) === lastBase.slice(0, 2))
+      base.length < design.minWordLength ||
+      base.length > design.maxWordLength
     )
       continue;
+    // Common words are preferred in the first bands by the pool ordering;
+    // do not hard-filter them, otherwise a sparse dictionary can end the
+    // campaign before the later difficulty bands are generated.
     const selected = [];
     const usedColumns = new Set();
-    const verticalTarget = Math.min(3, 2 + Math.floor(generated.length / 20));
-    const row = 3 + (generated.length % 3);
-    const startColumn = generated.length % 2;
+    const verticalTarget = Math.min(3, 2 + Math.floor(level / 20));
+    const row = 3 + (level % 3);
+    const startColumn = level % 2;
     const availableColumn = index =>
       !usedColumns.has(index) &&
       [...usedColumns].every(existing => Math.abs(existing - index) > 1);
     for (const candidate of candidatePool) {
       if (
         candidate === base ||
-        candidate.length < 4 ||
-        candidate.length > 4 ||
+        candidate.length < design.minWordLength ||
+        candidate.length > design.maxWordLength ||
         !canBuild(candidate, base)
       )
         continue;
@@ -128,21 +275,22 @@ const createGeneratedPuzzles = targetCount => {
       )
       .slice(0, 3);
     generated.push({
-      id: `generated-${String(generated.length + 5).padStart(3, '0')}`,
-      title: `Kelime Bölümü ${generated.length + 5}`,
+      id: `generated-${String(level + 1).padStart(3, '0')}`,
+      title: `Kelime Bölümü ${level + 1}`,
       clue: 'Kesişen kelimeleri bul.',
       letters: [...base],
       words: selectedWords,
       bonusWords,
       size: 9,
       placements,
+      design,
     });
     usedBases.add(base);
     lastBase = base;
   }
   return generated;
 };
-const puzzles = [...seedPuzzles, ...createGeneratedPuzzles(96)].slice(0, 100);
+const puzzles = createGeneratedPuzzles(100);
 const dailyPuzzles = seedPuzzles;
 const getDailyDate = () => new Date().toISOString().slice(0, 10);
 const getDailyPuzzle = requestedDate => {

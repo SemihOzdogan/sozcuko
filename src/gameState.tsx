@@ -27,13 +27,14 @@ type GameState = {
   finishDuel: (result: 'win' | 'lose' | 'draw') => void;
 };
 const GameContext = createContext<GameState | null>(null);
-const GAME_STATE_KEY = '@sozcuko/game-state';
+// İlerleme sıfırlama sürümü: eski cihaz kayıtları yeni sezona taşınmaz.
+const GAME_STATE_KEY = '@sozcuko/game-state:v2';
 const DEFAULT_STATE = {
-  xp: 1840,
-  classicScore: 1240,
-  classicWords: 7,
+  xp: 0,
+  classicScore: 0,
+  classicWords: 0,
   classicCompletedLevels: [] as number[],
-  duelWins: 3,
+  duelWins: 0,
   leaguePoints: 0,
   leagueWins: 0,
   leagueLosses: 0,

@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const secretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const secretKey =
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !secretKey) {
   throw new Error('SUPABASE_URL ve SUPABASE_SECRET_KEY gerekli.');
 }
@@ -19,26 +20,34 @@ const post = async (table, body) => {
     headers,
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${table}: ${response.status} ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${table}: ${response.status} ${await response.text()}`);
 };
 
 const dataDir = path.join(__dirname, '..', 'data');
-const words = JSON.parse(fs.readFileSync(path.join(dataDir, 'words.json'), 'utf8'))
-  .map(item => ({ word: item.word, approved: item.approved === true, source: item.source || 'manual' }));
+const words = JSON.parse(
+  fs.readFileSync(path.join(dataDir, 'words.json'), 'utf8'),
+).map(item => ({
+  word: item.word,
+  approved: item.approved === true,
+  source: item.source || 'manual',
+}));
 const mapPuzzle = (puzzle, level) => ({
-    level,
-    id: puzzle.id,
-    title: puzzle.title,
-    clue: puzzle.clue,
-    letters: puzzle.letters,
-    words: puzzle.words,
-    bonus_words: puzzle.bonusWords || [],
-    size: puzzle.size,
-    placements: puzzle.placements,
-  });
+  level,
+  id: puzzle.id,
+  title: puzzle.title,
+  clue: puzzle.clue,
+  letters: puzzle.letters,
+  words: puzzle.words,
+  bonus_words: puzzle.bonusWords || [],
+  size: puzzle.size,
+  placements: puzzle.placements,
+  design: puzzle.design || {},
+});
 
 const loadPuzzles = async () => {
-  const localApiUrl = process.env.LOCAL_API_URL || 'http://127.0.0.1:8787/api/v1';
+  const localApiUrl =
+    process.env.LOCAL_API_URL || 'http://127.0.0.1:8787/api/v1';
   try {
     const firstResponse = await fetch(`${localApiUrl}/puzzles/classic?level=0`);
     if (!firstResponse.ok) throw new Error('local API unavailable');
@@ -48,14 +57,19 @@ const loadPuzzles = async () => {
       Array.from({ length: total }, (_, level) =>
         level === 0
           ? Promise.resolve(firstPayload)
-          : fetch(`${localApiUrl}/puzzles/classic?level=${level}`).then(response => response.json()),
+          : fetch(`${localApiUrl}/puzzles/classic?level=${level}`).then(
+              response => response.json(),
+            ),
       ),
     );
-    return payloads.map((payload, level) => mapPuzzle(payload.data.puzzle, level));
+    return payloads.map((payload, level) =>
+      mapPuzzle(payload.data.puzzle, level),
+    );
   } catch {
     console.warn('Local API bulunamadı; yalnızca seed bulmacalar aktarılıyor.');
-    return JSON.parse(fs.readFileSync(path.join(dataDir, 'puzzles.json'), 'utf8'))
-      .map(mapPuzzle);
+    return JSON.parse(
+      fs.readFileSync(path.join(dataDir, 'puzzles.json'), 'utf8'),
+    ).map(mapPuzzle);
   }
 };
 
@@ -64,5 +78,7 @@ const loadPuzzles = async () => {
     await post('words', words.slice(index, index + 500));
   const puzzles = await loadPuzzles();
   await post('classic_puzzles', puzzles);
-  console.log(`${words.length} kelime ve ${puzzles.length} klasik bölüm Supabase'e aktarıldı.`);
+  console.log(
+    `${words.length} kelime ve ${puzzles.length} klasik bölüm Supabase'e aktarıldı.`,
+  );
 })();

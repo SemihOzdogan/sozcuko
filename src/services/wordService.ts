@@ -4,6 +4,7 @@ import {
   SUPABASE_RPC_URL,
 } from '../config';
 import type { ClassicPuzzle } from '../game/classicPuzzles';
+import { getLevelDesign } from '../game/levelDesign';
 
 export type WordSource = 'api';
 
@@ -17,11 +18,16 @@ const wordMeaningCache = new Map<string, string | null>();
 type PuzzleRow = Omit<ClassicPuzzle, 'bonusWords'> & {
   bonus_words?: string[];
   total_puzzles?: number;
+  design?: ClassicPuzzle['design'];
 };
 
-const mapPuzzle = (row: PuzzleRow): ClassicPuzzle => ({
+const mapPuzzle = (row: PuzzleRow, level: number): ClassicPuzzle => ({
   ...row,
   bonusWords: row.bonus_words ?? [],
+  design:
+    row.design && Object.keys(row.design).length > 0
+      ? row.design
+      : getLevelDesign(level),
 });
 
 const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
@@ -104,7 +110,7 @@ export const fetchClassicPuzzle = async (
   );
   if (!rows[0]) throw new Error('API geçerli bir klasik bölüm döndürmedi.');
   return {
-    puzzle: mapPuzzle(rows[0]),
+    puzzle: mapPuzzle(rows[0], level),
     totalPuzzles: rows[0].total_puzzles ?? 100,
   };
 };

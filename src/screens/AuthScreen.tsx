@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -12,10 +13,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import {
-  appleAuth,
-  AppleButton,
-} from '@invertase/react-native-apple-authentication';
+import { appleAuth } from '@invertase/react-native-apple-authentication';
 import { useAuth } from '../authState';
 import {
   signInWithAppleIdToken,
@@ -24,13 +22,14 @@ import {
   signUpWithPassword,
 } from '../services/authService';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '../config';
-import { BackHeader, C } from '../ui';
+import { C } from '../ui';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 
-export function AuthScreen({
-  navigation,
-}: NativeStackScreenProps<RootStackParamList, 'Auth'>) {
+export function AuthScreen({ navigation }: NativeStackScreenProps<
+  RootStackParamList,
+  'Auth'
+>) {
   const { setSession } = useAuth();
   const [registering, setRegistering] = useState(false);
   const [name, setName] = useState('');
@@ -133,29 +132,23 @@ export function AuthScreen({
       style={s.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <BackHeader
-        title="Hesabın"
-        tag="HESAP"
-        color={C.gold}
-        onBack={navigation.goBack}
-      />
       <ScrollView
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={s.logo}>
-          <Text style={s.logoText}>Aa</Text>
+          <Image
+            source={require('../assets/splash-logo.png')}
+            accessibilityLabel="Sözcüko splash görseli"
+            style={s.logoImage}
+            resizeMode="stretch"
+          />
         </View>
-        <Text style={s.brand}>SÖZCÜKO</Text>
         <Text style={s.title}>
           {registering ? 'Kelime dünyasına katıl' : 'Tekrar hoş geldin'}
         </Text>
-        <Text style={s.copy}>
-          {registering
-            ? 'İlerlemeni kaydet, her cihazda kaldığın yerden devam et.'
-            : 'Serin ve başarıların seni bekliyor.'}
-        </Text>
+
         {registering && (
           <TextInput
             value={name}
@@ -212,14 +205,16 @@ export function AuthScreen({
             <Text style={s.googleText}>Google ile devam et</Text>
           </Pressable>
           {Platform.OS === 'ios' ? (
-            <AppleButton
-              buttonType={AppleButton.Type.CONTINUE}
-              buttonStyle={AppleButton.Style.BLACK}
-              cornerRadius={17}
-              style={s.appleButton}
-              testID="continue-with-apple"
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Apple ile devam et"
               onPress={handleAppleLogin}
-            />
+              disabled={loadingAction !== null}
+              style={({ pressed }) => [s.appleButton, pressed && s.pressed]}
+            >
+              <Text style={s.appleMark}></Text>
+              <Text style={s.appleText}>Apple ile devam et</Text>
+            </Pressable>
           ) : null}
         </View>
         <Pressable
@@ -234,6 +229,18 @@ export function AuthScreen({
               : 'Hesabın yok mu? Kayıt ol'}
           </Text>
         </Pressable>
+        {!registering && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Misafir olarak devam et"
+            onPress={() =>
+              navigation.reset({ index: 0, routes: [{ name: 'Home' }] })
+            }
+            style={({ pressed }) => [s.guestButton, pressed && s.pressed]}
+          >
+            <Text style={s.guestButtonText}>Misafir olarak devam et</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -270,27 +277,25 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   content: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
+    paddingTop: 76,
     paddingBottom: 32,
   },
   logo: {
-    width: 68,
-    height: 68,
-    borderRadius: 23,
-    backgroundColor: C.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 165,
+    height: 149,
     alignSelf: 'center',
-    marginBottom: 14,
+    marginBottom: 8,
+    overflow: 'hidden',
+    backgroundColor: C.bg,
   },
-  logoText: { color: C.ink, fontSize: 28, fontWeight: '900' },
-  brand: {
-    color: C.gold,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 3,
-    textAlign: 'center',
+  logoImage: {
+    position: 'absolute',
+    width: 165,
+    height: 292,
+    top: -51,
+    left: 0,
   },
   title: {
     color: C.text,
@@ -298,6 +303,7 @@ const s = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
     marginTop: 28,
+    marginBottom: 24,
   },
   copy: {
     color: C.muted,
@@ -388,14 +394,14 @@ const s = StyleSheet.create({
   appleButton: {
     width: '100%',
     height: 54,
-    borderRadius: 17,
     backgroundColor: '#111111',
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 9,
   },
-  appleMark: { color: '#FFFFFF', fontSize: 23, lineHeight: 24 },
+  appleMark: { color: '#FFFFFF', fontSize: 22, lineHeight: 23 },
   appleText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   switch: {
     color: C.mint,
@@ -403,5 +409,15 @@ const s = StyleSheet.create({
     fontWeight: '800',
     marginTop: 24,
     fontSize: 13,
+  },
+  guestButton: {
+    alignSelf: 'center',
+    marginTop: 14,
+  },
+  guestButtonText: {
+    color: C.muted,
+    fontSize: 15,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });

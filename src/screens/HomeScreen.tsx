@@ -6,7 +6,9 @@ import {
   Text,
   Pressable,
   View,
+  Image,
   useWindowDimensions,
+  useColorScheme,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
@@ -18,20 +20,27 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 const modes = [
   [
     'Klasik Kelime',
-    'Harfleri birleştir, seriyi uzat.',
+    'Bölümleri sırayla çöz, ipuçlarını doğru yerde kullan.',
     '#16D6C4',
     '#123B52',
     'Classic',
   ],
-  ['Düello', 'Süreye karşı rakibini geç.', '#FF8A4C', '#4A2B26', 'Duel'],
+  [
+    'Düello',
+    'Rakibinden önce kelimeyi bul, süre bitmeden puanı kap.',
+    '#FF8A4C',
+    '#4A2B26',
+    'Duel',
+  ],
   [
     'Kelime Ligi',
-    'Sıralamada yüksel, rütbeni koru.',
+    'Düellolardan puan kazan, sıralamada yüksel.',
     '#F8C744',
     '#3B321E',
     'League',
   ],
 ] as const;
+const CLASSIC_TOTAL_LEVELS = 100;
 export function HomeScreen({ navigation }: Props) {
   const game = useGame();
   const { session } = useAuth();
@@ -41,8 +50,15 @@ export function HomeScreen({ navigation }: Props) {
     'Oyuncu';
   const initials = displayName.slice(0, 2).toUpperCase();
   const { width: screenWidth } = useWindowDimensions();
+  const isLight = useColorScheme() === 'light';
   const insets = useSafeAreaInsets();
   const contentWidth = Math.max(0, screenWidth - 32);
+  const classicProgress = Math.min(
+    100,
+    Math.round(
+      (game.classicCompletedLevels.length / CLASSIC_TOTAL_LEVELS) * 100,
+    ),
+  );
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   useFocusEffect(
     useCallback(() => {
@@ -57,8 +73,11 @@ export function HomeScreen({ navigation }: Props) {
     <ScrollView
       ref={scrollRef}
       style={s.root}
-      contentContainerStyle={[s.content, { paddingTop: insets.top + 14 }]}
-      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={[
+        s.content,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 },
+      ]}
+      contentInsetAdjustmentBehavior="never"
       showsVerticalScrollIndicator={false}
     >
       <View style={[s.inner, { width: contentWidth }]}>
@@ -66,6 +85,10 @@ export function HomeScreen({ navigation }: Props) {
           <Pressable
             onPress={() => navigation.navigate('Profile')}
             style={s.user}
+            android_ripple={{
+              color: 'rgba(255,255,255,.08)',
+              borderless: true,
+            }}
           >
             <View style={s.avatar}>
               <Text style={s.avatarText}>{initials}</Text>
@@ -86,81 +109,86 @@ export function HomeScreen({ navigation }: Props) {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Klasik oyuna devam et"
+          accessibilityLabel={`Klasik oyunda bölüm ${
+            game.classicCompletedLevels.length + 1
+          }'e devam et`}
           onPress={() => navigation.navigate('Classic')}
+          android_ripple={{ color: 'rgba(255,255,255,.08)' }}
           style={({ pressed }) => [s.heroPressable, pressed && s.pressed]}
         >
-          <Card colors={['#12355B', '#0E6B73']} style={s.hero}>
+          <Card
+            colors={
+              isLight
+                ? ['#D8F5F0', '#FFFFFF']
+                : [C.raised, '#0E6B73']
+            }
+            preserveColors
+            style={s.hero}
+          >
             <View style={s.heroContent}>
               <View style={s.heroTop}>
                 <Pill color={C.mint}>KLASİK OYUN</Pill>
               </View>
               <Text style={s.heroTitle} numberOfLines={2}>
-                Klasik serine devam et.
+                Bölüm {game.classicCompletedLevels.length + 1}'i çözmeye devam et.
               </Text>
               <Text style={s.heroText} numberOfLines={2}>
-                Harfleri birleştir, yeni bölümler aç ve XP kazanmaya devam et.
+                Kelimeleri bul, ipuçlarını kullan ve bir sonraki bölümü aç.
               </Text>
               <View style={s.heroProgressHeader}>
-                <Text style={s.heroProgressLabel}>BÖLÜM İLERLEMESİ</Text>
-                <Text style={s.heroProgressValue}>
-                  {`${Math.min(100, game.classicCompletedLevels.length)}%`}
-                </Text>
+                <Text style={s.heroProgressLabel}>KLASİK İLERLEMESİ</Text>
+                <Text style={s.heroProgressValue}>{`${classicProgress}%`}</Text>
               </View>
               <View style={s.heroProgress}>
-                <Progress
-                  value={Math.min(100, game.classicCompletedLevels.length)}
-                  color={C.mint}
-                />
+                <Progress value={classicProgress} color={C.mint} />
               </View>
             </View>
           </Card>
         </Pressable>
-        <Header
-          title="Devam eden"
-          detail={`Bölüm ${game.classicCompletedLevels.length + 1}`}
-        />
-        <Pressable
-          onPress={() => navigation.navigate('Classic')}
-          style={({ pressed }) => [s.pressable, pressed && s.pressed]}
-        >
-          <Card colors={['#173A58', '#17243B']} style={s.continue}>
-            <View style={s.icon}>
-              <Text style={s.iconText}>Aa</Text>
-            </View>
-            <View style={s.continueBody}>
-              <Text style={s.cardTitle} numberOfLines={1}>
-                Klasik Kelime
-              </Text>
-              <Text style={s.sub} numberOfLines={1}>
-                {game.classicCompletedLevels.length} bölüm tamamlandı
-              </Text>
-              <Progress
-                value={Math.min(100, game.classicCompletedLevels.length)}
-                color={C.mint}
-              />
-            </View>
-            <Text style={s.arrow}>›</Text>
-          </Card>
-        </Pressable>
-        <Header title="Oyun modları" detail="3 seçenek" />
+        <Header title="Oyun modları" detail="3 farklı oyun tarzı" />
         <View style={s.modeList}>
           {modes.map(([title, copy, accent, dark, route]) => (
             <Pressable
               key={title}
               disabled={!route}
               onPress={() => route && navigation.navigate(route)}
+              android_ripple={{ color: 'rgba(255,255,255,.08)' }}
               style={({ pressed }) => [s.modePress, pressed && s.pressed]}
             >
-              <Card colors={[dark, C.surface]} style={s.modeCard}>
+              <Card
+                colors={
+                  isLight && title === 'Klasik Kelime'
+                    ? ['#D8F5F0', '#FFFFFF']
+                    : isLight
+                      ? ['#FFFFFF', '#FFFFFF']
+                      : [dark, C.surface]
+                }
+                preserveColors
+                style={s.modeCard}
+              >
                 <View style={[s.symbolBox, { backgroundColor: `${accent}20` }]}>
-                  <Text style={[s.symbol, { color: accent }]}>
-                    {title === 'Düello'
-                      ? 'ϟ'
-                      : title === 'Kelime Ligi'
-                      ? '♛'
-                      : 'Aa'}
-                  </Text>
+                  {title === 'Klasik Kelime' ? (
+                    <Image
+                      source={require('../assets/splash-logo.png')}
+                      accessibilityLabel="Sözcüko splash görseli"
+                      style={s.symbolImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        s.symbol,
+                        {
+                          color:
+                            title === 'Düello'
+                              ? C.coralText
+                              : C.goldText,
+                        },
+                      ]}
+                    >
+                      {title === 'Düello' ? 'ϟ' : '♛'}
+                    </Text>
+                  )}
                 </View>
                 <View style={s.modeCopy}>
                   <Text numberOfLines={1} style={s.tileTitle}>
@@ -170,7 +198,7 @@ export function HomeScreen({ navigation }: Props) {
                     {copy}
                   </Text>
                 </View>
-                <Text style={[s.modeArrow, { color: accent }]}>
+                <Text style={s.modeArrow}>
                   {route ? '›' : '•'}
                 </Text>
               </Card>
@@ -191,7 +219,7 @@ function Header({ title, detail }: { title: string; detail: string }) {
 }
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
-  content: { alignItems: 'center', paddingBottom: 35 },
+  content: { alignItems: 'center' },
   inner: { alignItems: 'stretch' },
   top: {
     flexDirection: 'row',
@@ -202,6 +230,7 @@ const s = StyleSheet.create({
   user: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 48,
     flex: 1,
     minWidth: 0,
     marginRight: 12,
@@ -229,8 +258,8 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  xpIcon: { color: C.gold, fontSize: 10, fontWeight: '900', marginRight: 5 },
-  xpValue: { color: C.gold, fontWeight: '900', fontSize: 12 },
+  xpIcon: { color: C.goldText, fontSize: 10, fontWeight: '900', marginRight: 5 },
+  xpValue: { color: C.goldText, fontWeight: '900', fontSize: 12 },
   hero: {
     minHeight: 208,
     width: '100%',
@@ -251,14 +280,14 @@ const s = StyleSheet.create({
     marginTop: 0,
   },
   heroTitle: {
-    color: 'white',
+    color: C.text,
     fontSize: 25,
     lineHeight: 30,
     fontWeight: '900',
     marginTop: 14,
   },
   heroText: {
-    color: '#D7E9EC',
+    color: C.heroText,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 4,
@@ -296,12 +325,12 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
   },
   heroProgressLabel: {
-    color: '#A8E7E0',
+    color: C.heroMuted,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
-  heroProgressValue: { color: C.mint, fontSize: 12, fontWeight: '900' },
+  heroProgressValue: { color: C.mintText, fontSize: 12, fontWeight: '900' },
   heroProgress: { marginTop: -2 },
   section: {
     marginTop: 22,
@@ -318,7 +347,7 @@ const s = StyleSheet.create({
     flexShrink: 1,
   },
   detail: {
-    color: C.mint,
+    color: C.mintText,
     fontSize: 10,
     fontWeight: '800',
     maxWidth: 100,
@@ -347,7 +376,7 @@ const s = StyleSheet.create({
   iconText: { color: C.mint, fontWeight: '900', fontSize: 19 },
   cardTitle: { color: C.text, fontWeight: '900', fontSize: 14, left: 5 },
   arrow: {
-    color: '#B5C3DC',
+    color: C.muted,
     fontSize: 28,
     lineHeight: 30,
     width: 18,
@@ -372,6 +401,7 @@ const s = StyleSheet.create({
     left: 10,
   },
   symbol: { fontWeight: '900', fontSize: 24, textAlign: 'center' },
+  symbolImage: { width: 42, height: 42, borderRadius: 13 },
   modeCopy: {
     flex: 1,
     minWidth: 0,
@@ -395,6 +425,7 @@ const s = StyleSheet.create({
     left: 5,
   },
   modeArrow: {
+    color: C.text,
     width: 18,
     textAlign: 'right',
     fontSize: 30,

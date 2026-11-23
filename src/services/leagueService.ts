@@ -100,13 +100,18 @@ export const fetchActiveLeaguePlayers = async (
   const cutoff = new Date(
     Date.now() - activeWithinSeconds * 1000,
   ).toISOString();
-  return request<LeaguePlayer[]>(
+  const players = await request<LeaguePlayer[]>(
     `${SUPABASE_REST_URL}/league_players?player_id=neq.${encodeURIComponent(
       playerId,
     )}&updated_at=gte.${encodeURIComponent(
       cutoff,
     )}&select=*&order=updated_at.desc&limit=100`,
   );
+  const queuedPlayers = await request<Array<{ player_id: string }>>(
+    `${SUPABASE_REST_URL}/duel_matchmaking_queue?select=player_id`,
+  ).catch(() => []);
+  const queuedIds = new Set(queuedPlayers.map(player => player.player_id));
+  return players.filter(player => !queuedIds.has(player.player_id));
 };
 
 export const recordLeagueMatch = async (

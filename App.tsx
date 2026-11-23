@@ -2,10 +2,17 @@ import 'react-native-gesture-handler';
 import {
   createNavigationContainerRef,
   NavigationContainer,
+  DefaultTheme,
   DarkTheme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AppState, StatusBar } from 'react-native';
+import {
+  Alert,
+  AppState,
+  BackHandler,
+  StatusBar,
+  useColorScheme,
+} from 'react-native';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -29,6 +36,7 @@ import {
   showDuelInvitationNotification,
   subscribeToNotificationPress,
 } from './src/services/localNotificationService';
+import { initializeAds } from './src/services/adService';
 export type RootStackParamList = {
   Home: undefined;
   Classic: undefined;
@@ -50,18 +58,30 @@ export default function App() {
 }
 function AuthenticatedApp() {
   const { isLoading } = useAuth();
+  const colorScheme = useColorScheme();
+  const isLight = colorScheme === 'light';
+  useEffect(() => {
+    initializeAds().catch(() => undefined);
+  }, []);
   if (isLoading) return null;
   return (
     <GameProvider>
       <PresenceTracker />
+      <AndroidBackHandler />
       <NavigationContainer
         ref={navigationRef}
         theme={{
-          ...DarkTheme,
-          colors: { ...DarkTheme.colors, background: C.bg },
+          ...(isLight ? DefaultTheme : DarkTheme),
+          colors: {
+            ...(isLight ? DefaultTheme.colors : DarkTheme.colors),
+            background: isLight ? '#F4F7FB' : '#101729',
+            card: isLight ? '#FFFFFF' : '#17243B',
+            text: isLight ? '#142033' : '#FFFDF5',
+            border: isLight ? 'rgba(20,32,51,.12)' : 'rgba(255,255,255,.08)',
+          },
         }}
       >
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isLight ? 'dark-content' : 'light-content'} />
         <Stack.Navigator
           initialRouteName="Home"
           screenOptions={{
@@ -80,6 +100,36 @@ function AuthenticatedApp() {
       </NavigationContainer>
     </GameProvider>
   );
+}
+
+function AndroidBackHandler() {
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (!navigationRef.isReady()) return false;
+        const route = navigationRef.getCurrentRoute();
+        if (route?.name !== 'Home' && navigationRef.canGoBack()) {
+          navigationRef.goBack();
+          return true;
+        }
+        if (route?.name === 'Home') {
+          Alert.alert('Oyundan çık', 'Oyundan çıkmak istiyor musun?', [
+            { text: 'İptal', style: 'cancel' },
+            {
+              text: 'Çıkış',
+              style: 'destructive',
+              onPress: () => BackHandler.exitApp(),
+            },
+          ]);
+          return true;
+        }
+        return false;
+      },
+    );
+    return () => subscription.remove();
+  }, []);
+  return null;
 }
 
 function PresenceTracker() {

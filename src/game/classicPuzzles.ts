@@ -9,6 +9,7 @@ export type ClassicPuzzle = {
   bonusWords: string[];
   size: number;
   placements: Record<string, PuzzlePlacement[]>;
+  design?: import('./levelDesign').LevelDesign;
 };
 
 // Bölüm ve kelime verisi yalnızca API’den gelir; uygulamaya gömülü puzzle yoktur.

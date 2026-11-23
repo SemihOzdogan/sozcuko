@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useColorScheme,
 } from 'react-native';
 import type { RootStackParamList } from '../../App';
 import { BackHeader, Button, C, Card, Pill, Progress } from '../ui';
@@ -17,6 +18,7 @@ import {
   fetchLeaguePlayers,
   type LeaguePlayer,
 } from '../services/leagueService';
+import { trackEvent } from '../services/analyticsService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'League'>;
 
@@ -73,6 +75,7 @@ export function LeagueScreen({ navigation }: Props) {
   };
 
   useEffect(() => {
+    trackEvent('league_viewed');
     loadLeaderboard();
   }, [displayName]);
 
@@ -84,6 +87,7 @@ export function LeagueScreen({ navigation }: Props) {
   const tier = TIERS[tierIndex];
   const nextTier = TIERS[tierIndex + 1];
   const tierRange = nextTier ? nextTier.min - tier.min : 1;
+  const isLight = useColorScheme() === 'light';
   const tierProgress = nextTier
     ? ((leaguePoints - tier.min) / tierRange) * 100
     : 100;
@@ -95,7 +99,7 @@ export function LeagueScreen({ navigation }: Props) {
     <View style={s.root}>
       <BackHeader
         title="Kelime Ligi"
-        tag="REKABETÇİ MOD"
+        tag="PUAN VE RÜTBE"
         color={C.gold}
         onBack={navigation.goBack}
       />
@@ -104,7 +108,11 @@ export function LeagueScreen({ navigation }: Props) {
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
       >
-        <Card colors={['#4B3A1B', '#243554']} style={s.rankCard}>
+        <Card
+          colors={isLight ? ['#FFFFFF', '#FFFFFF'] : ['#4B3A1B', '#243554']}
+          preserveColors
+          style={s.rankCard}
+        >
           <View style={s.rankInner}>
             <View style={[s.rankAccent, { backgroundColor: tier.color }]} />
             <View style={s.rankTop}>
@@ -137,6 +145,19 @@ export function LeagueScreen({ navigation }: Props) {
             </Text>
           </View>
         </Card>
+
+        <View style={s.seasonCard}>
+          <View style={s.seasonCopy}>
+            <Text style={s.seasonEyebrow}>SEZON HEDEFİ</Text>
+            <Text style={s.seasonTitle}>
+              {nextTier ? `${nextTier.name} rütbesine ulaş` : 'Zirveyi koru'}
+            </Text>
+            <Text style={s.seasonSubtitle}>
+              Bir sonraki rütbe için ilerlemeni takip et.
+            </Text>
+          </View>
+          <Text style={s.seasonIcon}>♛</Text>
+        </View>
 
         <View style={s.statsRow}>
           <View style={s.stat}>
@@ -216,7 +237,7 @@ export function LeagueScreen({ navigation }: Props) {
           </View>
         </View>
         <Button
-          title="DÜELLOYA GİR"
+          title="DÜELLO BAŞLAT"
           color={C.gold}
           onPress={() => navigation.navigate('Duel')}
         />
@@ -240,7 +261,7 @@ const s = StyleSheet.create({
   rankCopy: { flex: 1, minWidth: 0 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrow: {
-    color: '#E5C978',
+    color: C.gold,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
@@ -259,7 +280,7 @@ const s = StyleSheet.create({
   rankBadgeText: { fontSize: 31, fontWeight: '900' },
   pointsRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 8 },
   points: { color: C.text, fontSize: 30, fontWeight: '900' },
-  pointsLabel: { color: '#D7E9EC', fontSize: 13, marginLeft: 6 },
+  pointsLabel: { color: C.muted, fontSize: 13, marginLeft: 6 },
   progressMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -268,7 +289,7 @@ const s = StyleSheet.create({
     minWidth: 0,
   },
   progressLabel: {
-    color: '#BBD4D3',
+    color: C.muted,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.7,
@@ -279,7 +300,7 @@ const s = StyleSheet.create({
     fontWeight: '900',
     flexShrink: 0,
   },
-  progressCopy: { color: '#D7E9EC', fontSize: 12, marginTop: 8 },
+  progressCopy: { color: C.muted, fontSize: 12, marginTop: 8 },
   statsRow: {
     flexDirection: 'row',
     backgroundColor: C.surface,
@@ -316,6 +337,21 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     gap: 10,
   },
+  seasonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(248,199,68,.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,199,68,.22)',
+  },
+  seasonCopy: { flex: 1, minWidth: 0 },
+  seasonEyebrow: { color: C.gold, fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  seasonTitle: { color: C.text, fontSize: 16, fontWeight: '900', marginTop: 4 },
+  seasonSubtitle: { color: C.muted, fontSize: 11, marginTop: 4 },
+  seasonIcon: { color: C.gold, fontSize: 32, marginLeft: 12 },
   currentPlayer: { backgroundColor: 'rgba(248,199,68,.12)' },
   playerRank: {
     width: 18,

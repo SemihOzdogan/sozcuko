@@ -1,7 +1,27 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { useEffect, useState } from 'react';
 import type { RootStackParamList } from '../../App';
-import { BackHeader, Card, C, Pill, Progress } from '../ui';
+import {
+  BackHeader,
+  Card,
+  C,
+  getHapticsEnabled,
+  loadThemeMode,
+  loadHapticsEnabled,
+  Pill,
+  Progress,
+  setHapticsEnabled,
+  setThemeMode,
+} from '../ui';
 import { useGame } from '../gameState';
 import { useAuth } from '../authState';
 export function ProfileScreen({
@@ -9,6 +29,15 @@ export function ProfileScreen({
 }: NativeStackScreenProps<RootStackParamList, 'Profile'>) {
   const game = useGame();
   const { session, logout } = useAuth();
+  const [hapticsEnabled, setHapticsEnabledState] = useState(
+    getHapticsEnabled(),
+  );
+  const [darkMode, setDarkMode] = useState(false);
+  const isLight = useColorScheme() === 'light';
+  useEffect(() => {
+    loadHapticsEnabled().then(setHapticsEnabledState);
+    loadThemeMode().then(mode => setDarkMode(mode === 'dark'));
+  }, []);
   const displayName =
     session?.user?.user_metadata?.name ||
     session?.user?.email?.split('@')[0] ||
@@ -26,7 +55,11 @@ export function ProfileScreen({
         contentContainerStyle={s.content}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Card colors={['#4B3A1B', '#243554']} style={s.profile}>
+        <Card
+          colors={isLight ? ['#FFFFFF', '#FFFFFF'] : ['#4B3A1B', '#243554']}
+          preserveColors
+          style={s.profile}
+        >
           <View style={s.profileInner}>
             <View style={s.accountLabelRow}>
               <Text style={s.accountLabel}>HESAP ÖZETİ</Text>
@@ -109,6 +142,42 @@ export function ProfileScreen({
             Seviye {game.level + 1} için {200 - (game.xp % 200)} XP kaldı
           </Text>
         </View>
+        <View style={s.preferenceCard}>
+          <View style={s.preferenceCopy}>
+            <Text style={s.preferenceTitle}>Titreşimli geri bildirim</Text>
+            <Text style={s.preferenceSubtitle}>
+              Doğru ve hatalı kelimelerde kısa titreşim kullan.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Titreşimli geri bildirimi aç veya kapat"
+            value={hapticsEnabled}
+            onValueChange={enabled => {
+              setHapticsEnabledState(enabled);
+              setHapticsEnabled(enabled);
+            }}
+            trackColor={{ false: '#3A4A62', true: 'rgba(22,214,196,.45)' }}
+            thumbColor={hapticsEnabled ? C.mint : '#AAB9CC'}
+          />
+        </View>
+        <View style={s.preferenceCard}>
+          <View style={s.preferenceCopy}>
+            <Text style={s.preferenceTitle}>Koyu tema</Text>
+            <Text style={s.preferenceSubtitle}>
+              Uygulamanın görünümünü açık veya koyu olarak seç.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Koyu temayı aç veya kapat"
+            value={darkMode}
+            onValueChange={enabled => {
+              setDarkMode(enabled);
+              setThemeMode(enabled ? 'dark' : 'light');
+            }}
+            trackColor={{ false: '#CBD5E1', true: 'rgba(22,214,196,.45)' }}
+            thumbColor={darkMode ? C.mint : '#FFFFFF'}
+          />
+        </View>
         <Text style={s.heading}>Son başarımlar</Text>
         <View style={s.achievement}>
           <Text style={s.badge}>♛</Text>
@@ -156,7 +225,7 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
   },
   accountLabel: {
-    color: '#E5C978',
+    color: C.gold,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
@@ -171,9 +240,9 @@ const s = StyleSheet.create({
     height: 44,
     borderRadius: 14,
     paddingHorizontal: 8,
-    backgroundColor: 'rgba(255,255,255,.12)',
+    backgroundColor: C.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.16)',
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
@@ -186,10 +255,7 @@ const s = StyleSheet.create({
     fontWeight: '900',
   },
   pressed: { opacity: 0.72 },
-  profileDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,.12)',
-  },
+  profileDivider: { height: 1, backgroundColor: C.border },
   profileCopy: { flex: 1, minWidth: 0 },
   avatar: {
     height: 72,
@@ -199,10 +265,10 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#101729', fontSize: 20, fontWeight: '700' },
-  level: { color: '#FFE7A1', fontSize: 10, fontWeight: '900' },
-  title: { color: 'white', fontSize: 21, fontWeight: '900', marginTop: 4 },
-  email: { color: '#C4D0DF', fontSize: 11, marginTop: 7 },
+  avatarText: { color: C.ink, fontSize: 20, fontWeight: '700' },
+  level: { color: C.gold, fontSize: 10, fontWeight: '900' },
+  title: { color: C.text, fontSize: 21, fontWeight: '900', marginTop: 4 },
+  email: { color: C.muted, fontSize: 11, marginTop: 7 },
   resourceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -210,13 +276,13 @@ const s = StyleSheet.create({
   },
   resource: { flex: 1, minWidth: 0 },
   resourceLabel: {
-    color: '#E5C978',
+    color: C.gold,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1,
   },
   resourceValue: {
-    color: '#FFFFFF',
+    color: C.text,
     fontSize: 14,
     fontWeight: '900',
     marginTop: 4,
@@ -227,7 +293,7 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: -7,
   },
-  progressLabel: { color: '#C4D0DF', fontSize: 10, fontWeight: '700' },
+  progressLabel: { color: C.muted, fontSize: 10, fontWeight: '700' },
   progressValue: { color: C.gold, fontSize: 12, fontWeight: '900' },
   metrics: { flexDirection: 'row', gap: 9 },
   metric: {
@@ -242,10 +308,28 @@ const s = StyleSheet.create({
   levelProgressCard: {
     padding: 18,
     borderRadius: 20,
-    backgroundColor: '#17243B',
+    backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: 'rgba(248,199,68,.16)',
     gap: 10,
+  },
+  preferenceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  preferenceCopy: { flex: 1, minWidth: 0 },
+  preferenceTitle: { color: C.text, fontSize: 14, fontWeight: '900' },
+  preferenceSubtitle: {
+    color: C.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 4,
   },
   levelProgressHeader: {
     flexDirection: 'row',
@@ -253,7 +337,7 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
   },
   levelProgressEyebrow: {
-    color: '#E5C978',
+    color: C.gold,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
