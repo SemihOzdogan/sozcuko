@@ -32,8 +32,8 @@ export function ProfileScreen({
   const [hapticsEnabled, setHapticsEnabledState] = useState(
     getHapticsEnabled(),
   );
-  const [darkMode, setDarkMode] = useState(false);
   const isLight = useColorScheme() === 'light';
+  const [darkMode, setDarkMode] = useState(!isLight);
   useEffect(() => {
     loadHapticsEnabled().then(setHapticsEnabledState);
     loadThemeMode().then(mode => setDarkMode(mode === 'dark'));
@@ -41,7 +41,7 @@ export function ProfileScreen({
   const displayName =
     session?.user?.user_metadata?.name ||
     session?.user?.email?.split('@')[0] ||
-    'Oyuncu';
+    'Misafir';
   const initials = displayName.slice(0, 2).toUpperCase();
   return (
     <View style={s.root}>
@@ -63,9 +63,6 @@ export function ProfileScreen({
           <View style={s.profileInner}>
             <View style={s.accountLabelRow}>
               <Text style={s.accountLabel}>HESAP ÖZETİ</Text>
-              <Pill color={session ? C.mint : C.gold}>
-                {session ? 'SENKRONİZE' : 'MİSAFİR'}
-              </Pill>
             </View>
             <View style={s.profileHeader}>
               <View style={s.avatar}>
@@ -73,10 +70,19 @@ export function ProfileScreen({
               </View>
               <View style={s.profileCopy}>
                 <Text style={s.level}>SEVİYE {game.level}</Text>
-                <Text style={s.title}>Kelime Ustası</Text>
-                <Text style={s.email} numberOfLines={1}>
-                  {session?.user?.email || 'İlerlemen bu cihazda saklanır'}
+                <Text
+                  style={s.title}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                >
+                  Kelime Ustası
                 </Text>
+                {session?.user?.email ? (
+                  <Text style={s.email} numberOfLines={1}>
+                    {session.user.email}
+                  </Text>
+                ) : null}
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -84,12 +90,28 @@ export function ProfileScreen({
                 onPress={() =>
                   session ? logout() : navigation.navigate('Auth')
                 }
-                style={({ pressed }) => [s.authAction, pressed && s.pressed]}
+                style={({ pressed }) => [
+                  s.authAction,
+                  session ? s.logoutAction : s.loginAction,
+                  pressed && s.pressed,
+                ]}
               >
-                <Text style={s.authActionText}>
-                  {session ? 'ÇIKIŞ' : 'GİRİŞ'}
+                <Text
+                  style={[
+                    s.authActionText,
+                    session ? s.logoutActionText : s.loginActionText,
+                  ]}
+                >
+                  {session ? 'ÇIKIŞ YAP' : 'GİRİŞ YAP'}
                 </Text>
-                <Text style={s.authActionIcon}>↗</Text>
+                <Text
+                  style={[
+                    s.authActionIcon,
+                    session ? s.logoutActionText : s.loginActionText,
+                  ]}
+                >
+                  ↗
+                </Text>
               </Pressable>
             </View>
             <View style={s.profileDivider} />
@@ -156,19 +178,24 @@ export function ProfileScreen({
               setHapticsEnabledState(enabled);
               setHapticsEnabled(enabled);
             }}
-            trackColor={{ false: '#3A4A62', true: 'rgba(22,214,196,.45)' }}
-            thumbColor={hapticsEnabled ? C.mint : '#AAB9CC'}
+            trackColor={{
+              false: isLight ? '#CBD5E1' : '#3A4A62',
+              true: 'rgba(22,214,196,.45)',
+            }}
+            thumbColor={hapticsEnabled ? C.mint : '#FFFFFF'}
           />
         </View>
         <View style={s.preferenceCard}>
           <View style={s.preferenceCopy}>
-            <Text style={s.preferenceTitle}>Koyu tema</Text>
+            <Text style={s.preferenceTitle}>
+              {darkMode ? 'Koyu tema' : 'Açık tema'}
+            </Text>
             <Text style={s.preferenceSubtitle}>
               Uygulamanın görünümünü açık veya koyu olarak seç.
             </Text>
           </View>
           <Switch
-            accessibilityLabel="Koyu temayı aç veya kapat"
+            accessibilityLabel={`${darkMode ? 'Koyu' : 'Açık'} temayı aç veya kapat`}
             value={darkMode}
             onValueChange={enabled => {
               setDarkMode(enabled);
@@ -232,26 +259,36 @@ const s = StyleSheet.create({
   },
   profileHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+    alignItems: 'flex-start',
+    gap: 12,
   },
   authAction: {
-    minWidth: 58,
+    minWidth: 92,
     height: 44,
     borderRadius: 14,
-    paddingHorizontal: 8,
-    backgroundColor: C.raised,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+    gap: 6,
+    alignSelf: 'flex-start',
   },
-  authActionText: { color: C.gold, fontSize: 9, fontWeight: '900' },
+  loginAction: {
+    backgroundColor: 'rgba(248,199,68,.14)',
+    borderColor: 'rgba(248,199,68,.3)',
+  },
+  logoutAction: {
+    backgroundColor: 'rgba(255,138,76,.12)',
+    borderColor: 'rgba(255,138,76,.28)',
+  },
+  authActionText: { fontSize: 10, fontWeight: '900' },
+  loginActionText: { color: C.gold },
+  logoutActionText: { color: C.coral },
   authActionIcon: {
     color: C.gold,
-    fontSize: 15,
-    lineHeight: 15,
+    fontSize: 16,
+    lineHeight: 16,
     fontWeight: '900',
   },
   pressed: { opacity: 0.72 },
@@ -267,7 +304,14 @@ const s = StyleSheet.create({
   },
   avatarText: { color: C.ink, fontSize: 20, fontWeight: '700' },
   level: { color: C.gold, fontSize: 10, fontWeight: '900' },
-  title: { color: C.text, fontSize: 21, fontWeight: '900', marginTop: 4 },
+  title: {
+    color: C.text,
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+    marginTop: 4,
+    flexShrink: 1,
+  },
   email: { color: C.muted, fontSize: 11, marginTop: 7 },
   resourceRow: {
     flexDirection: 'row',

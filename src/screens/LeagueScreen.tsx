@@ -236,11 +236,6 @@ export function LeagueScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
-        <Button
-          title="DÜELLO BAŞLAT"
-          color={C.gold}
-          onPress={() => navigation.navigate('Duel')}
-        />
       </ScrollView>
     </View>
   );

@@ -20,6 +20,7 @@ import {
   signInWithGoogleIdToken,
   signInWithPassword,
   signUpWithPassword,
+  type AuthSession,
 } from '../services/authService';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '../config';
 import { C } from '../ui';
@@ -39,6 +40,10 @@ export function AuthScreen({ navigation }: NativeStackScreenProps<
   const [loadingAction, setLoadingAction] = useState<
     'email' | 'google' | 'apple' | null
   >(null);
+  const completeLogin = (session: AuthSession) => {
+    setSession(session);
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+  };
   useEffect(() => {
     GoogleSignin.configure({
       webClientId: GOOGLE_WEB_CLIENT_ID,
@@ -65,7 +70,7 @@ export function AuthScreen({ navigation }: NativeStackScreenProps<
         idToken,
         tokens.accessToken,
       );
-      setSession(session);
+      completeLogin(session);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -89,7 +94,7 @@ export function AuthScreen({ navigation }: NativeStackScreenProps<
         response.identityToken,
         response.nonce,
       );
-      setSession(session);
+      completeLogin(session);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -116,7 +121,7 @@ export function AuthScreen({ navigation }: NativeStackScreenProps<
         ? await signUpWithPassword(email.trim(), password, name.trim())
         : await signInWithPassword(email.trim(), password);
       if (session?.access_token) {
-        setSession(session);
+        completeLogin(session);
       } else
         setError(
           'Kayıt başarılı. E-postanı doğruladıktan sonra giriş yapabilirsin.',

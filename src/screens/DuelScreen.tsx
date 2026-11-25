@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   View,
+  DynamicColorIOS,
   useWindowDimensions,
 } from 'react-native';
 import type { RootStackParamList } from '../../App';
@@ -36,12 +37,15 @@ import {
 } from '../services/duelService';
 import {
   ensureLeaguePlayer,
+  fetchLeaguePlayer,
   fetchActiveLeaguePlayers,
   type LeaguePlayer,
   touchLeaguePlayer,
 } from '../services/leagueService';
 import { trackEvent } from '../services/analyticsService';
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
+const adaptive = (dark: string, light: string) =>
+  DynamicColorIOS({ dark, light }) as unknown as string;
 const ROUND_SECONDS = 10;
 const MATCHMAKING_SECONDS = 30;
 const DUEL_REWARDS = {
@@ -89,10 +93,12 @@ export function DuelScreen({ navigation, route }: Props) {
   const displayName =
     session?.user?.user_metadata?.name ||
     session?.user?.email?.split('@')[0] ||
-    'Oyuncu';
+    'Misafir';
   const [room, setRoom] = useState<DuelRoom | null>(null);
   const currentRoomIdRef = useRef<string | null>(null);
   const [activePlayers, setActivePlayers] = useState<LeaguePlayer[]>([]);
+  const [inviterName, setInviterName] = useState('Bir misafir');
+  const [opponentName, setOpponentName] = useState('RAKİP');
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [selectedOpponent, setSelectedOpponent] = useState<string | null>(null);
   const [isQuickMatch, setIsQuickMatch] = useState(false);
@@ -362,6 +368,53 @@ export function DuelScreen({ navigation, route }: Props) {
       active = false;
     };
   }, [displayName, session?.user?.id]);
+
+  useEffect(() => {
+    if (
+      !room ||
+      room.status !== 'waiting' ||
+      room.player_two_id !== playerId
+    ) {
+      return;
+    }
+    let active = true;
+    setInviterName('Bir misafir');
+    fetchLeaguePlayer(room.player_one_id)
+      .then(player => {
+        if (active && player?.display_name) setInviterName(player.display_name);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [playerId, room?.id, room?.player_one_id, room?.player_two_id, room?.status]);
+
+  useEffect(() => {
+    if (!room || room.status !== 'playing' || !room.player_two_id) {
+      setOpponentName('RAKİP');
+      return;
+    }
+    const opponentId =
+      room.player_one_id === playerId ? room.player_two_id : room.player_one_id;
+    let active = true;
+    setOpponentName('RAKİP');
+    fetchLeaguePlayer(opponentId)
+      .then(player => {
+        const name = player?.display_name?.trim();
+        const genericGuestNames = new Set(['oyuncu', 'misafir', 'guest']);
+        if (
+          active &&
+          name &&
+          !genericGuestNames.has(name.toLocaleLowerCase('tr-TR'))
+        ) {
+          setOpponentName(name);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [playerId, room?.id, room?.player_one_id, room?.player_two_id, room?.status]);
 
   useEffect(() => {
     if (!playerId || playerId === 'local-player' || room?.status === 'playing')
@@ -652,7 +705,7 @@ export function DuelScreen({ navigation, route }: Props) {
             <>
               <Text style={s.waitingEyebrow}>DÜELLO DAVETİ</Text>
               <Text style={s.waitingTitle}>
-                Bir oyuncu seni düelloya çağırdı
+                {inviterName} seni düelloya çağırdı
               </Text>
               <Text style={s.waitingCopy}>
                 Kabul ettiğinde 10 saniyelik test karşılaşması başlayacak.
@@ -715,7 +768,7 @@ export function DuelScreen({ navigation, route }: Props) {
                     <View style={s.lobbyFooter}>
                       <Text style={s.lobbyFooterLabel}>10 SANİYE</Text>
                       <Text style={s.lobbyFooterHint}>
-                      10 saniye, tek hedef: daha çok kelime
+                        10 saniye, tek hedef: daha çok kelime
                       </Text>
                     </View>
                     <Pressable
@@ -784,7 +837,9 @@ export function DuelScreen({ navigation, route }: Props) {
               />
             </View>
             <View style={s.score}>
-              <Text style={s.label}>RAKİP</Text>
+              <Text numberOfLines={1} style={s.label}>
+                {opponentName}
+              </Text>
               <Text style={s.scoreValue}>{opponentScore}</Text>
             </View>
           </View>
@@ -937,7 +992,7 @@ export function DuelScreen({ navigation, route }: Props) {
         animationType="fade"
         statusBarTranslucent
       >
-        <View style={s.modalBackdrop}>
+        <View style={s.resultModalBackdrop}>
           <View style={s.resultCard}>
             <View
               style={[
@@ -945,8 +1000,8 @@ export function DuelScreen({ navigation, route }: Props) {
                 result === 'win'
                   ? s.resultIconWin
                   : result === 'lose'
-                  ? s.resultIconLose
-                  : s.resultIconDraw,
+                    ? s.resultIconLose
+                    : s.resultIconDraw,
               ]}
             >
               <Text style={s.resultIconText}>
@@ -958,15 +1013,15 @@ export function DuelScreen({ navigation, route }: Props) {
               {result === 'win'
                 ? 'Kazandın!'
                 : result === 'lose'
-                ? 'Kaybettin'
-                : 'Berabere'}
+                  ? 'Kaybettin'
+                  : 'Berabere'}
             </Text>
             <Text style={s.resultSubtitle}>
               {result === 'win'
                 ? 'Hızlı ve doğru kelimelerle rakibini geride bıraktın.'
                 : result === 'lose'
-                ? 'Bu turu kaçırdın. Yeni bir turda şansını tekrar dene.'
-                : 'İkiniz de aynı puandasınız. Rövanş zamanı!'}
+                  ? 'Bu turu kaçırdın. Yeni bir turda şansını tekrar dene.'
+                  : 'İkiniz de aynı puandasınız. Rövanş zamanı!'}
             </Text>
             <View style={s.resultScores}>
               <View
@@ -982,7 +1037,9 @@ export function DuelScreen({ navigation, route }: Props) {
                   result === 'lose' && s.resultScoreActive,
                 ]}
               >
-                <Text style={s.resultName}>RAKİP</Text>
+                <Text numberOfLines={1} style={s.resultName}>
+                  {opponentName}
+                </Text>
                 <Text style={s.resultValue}>{opponentScore}</Text>
               </View>
             </View>
@@ -1328,7 +1385,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,138,76,.12)',
+    backgroundColor: adaptive('rgba(255,138,76,.12)', 'rgba(217,106,61,.10)'),
   },
   timer: {
     color: C.coral,
@@ -1343,6 +1400,13 @@ const s = StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: 20,
     padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#19383D',
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
   },
   score: { alignItems: 'center', minWidth: 90 },
   label: { color: C.muted, fontSize: 10, fontWeight: '900' },
@@ -1357,7 +1421,9 @@ const s = StyleSheet.create({
     height: 118,
     padding: 10,
     borderRadius: 16,
-    backgroundColor: C.surface,
+    backgroundColor: C.raised,
+    borderWidth: 1,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   listTitle: {
@@ -1371,9 +1437,9 @@ const s = StyleSheet.create({
   wordBox: {
     height: 62,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,.04)',
+    backgroundColor: adaptive('rgba(255,255,255,.04)', 'rgba(39,86,88,.07)'),
     borderWidth: 1,
-    borderColor: 'rgba(22,214,196,.32)',
+    borderColor: adaptive('rgba(22,214,196,.32)', 'rgba(8,127,118,.24)'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1387,9 +1453,14 @@ const s = StyleSheet.create({
   word: { color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: 2 },
   wheel: {
     alignSelf: 'center',
-    backgroundColor: 'rgba(236,248,255,.08)',
+    backgroundColor: adaptive('rgba(236,248,255,.08)', 'rgba(39,86,88,.07)'),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.12)',
+    borderColor: adaptive('rgba(255,255,255,.12)', 'rgba(39,86,88,.18)'),
+    shadowColor: '#19383D',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
     position: 'relative',
   },
   line: {
@@ -1420,6 +1491,13 @@ const s = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(4,11,26,.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  resultModalBackdrop: {
+    flex: 1,
+    backgroundColor: adaptive('rgba(4,11,26,.88)', 'rgba(24,52,59,.42)'),
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -1618,6 +1696,7 @@ const s = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 7 },
     elevation: 7,
+    marginTop: 10
   },
   newRoundButtonPressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
   newRoundButtonText: {
@@ -1632,6 +1711,21 @@ const s = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 22,
   },
-  exitAction: { paddingVertical: 12 },
-  exitActionText: { color: C.muted, fontSize: 13, fontWeight: '800' },
+  exitAction: {
+    width: '100%',
+    minHeight: 50,
+    marginTop: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: adaptive('rgba(255,255,255,.06)', 'rgba(39,86,88,.06)'),
+    borderWidth: 1,
+    borderColor: adaptive('rgba(255,255,255,.14)', 'rgba(39,86,88,.22)'),
+  },
+  exitActionText: {
+    color: C.muted,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
 });

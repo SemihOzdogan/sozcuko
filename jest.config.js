@@ -1,5 +1,6 @@
 module.exports = {
   preset: '@react-native/jest-preset',
+  testMatch: ['<rootDir>/__tests__/**/*.[jt]s?(x)'],
   transformIgnorePatterns: [
     'node_modules/(?!((@)?react-native|@react-native(-community)?|react-native-gesture-handler|@react-navigation)/)',
   ],
@@ -15,5 +16,7 @@ module.exports = {
     '^@invertase/react-native-apple-authentication$':
       '<rootDir>/__mocks__/apple-authentication.js',
     '^@notifee/react-native$': '<rootDir>/__mocks__/notifee.js',
+    '^react-native-google-mobile-ads$':
+      '<rootDir>/__mocks__/react-native-google-mobile-ads.js',
   },
 };

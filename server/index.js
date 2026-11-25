@@ -113,7 +113,7 @@ const levelDesign = level => {
       maxWordLength: 4,
       rarity: 'common',
       isRelief,
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
       blockedLetters: [],
       specialGoal: 'none',
     };
@@ -124,7 +124,7 @@ const levelDesign = level => {
       maxWordLength: 5,
       rarity: isRelief ? 'varied' : 'less-common',
       isRelief,
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
       blockedLetters: [],
       specialGoal: 'none',
     };
@@ -135,7 +135,7 @@ const levelDesign = level => {
       maxWordLength: 6,
       rarity: isRelief ? 'varied' : 'less-common',
       isRelief,
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
       blockedLetters: [],
       specialGoal: isRelief ? 'none' : 'limited-moves',
     };
@@ -146,7 +146,7 @@ const levelDesign = level => {
       maxWordLength: 7,
       rarity: isRelief ? 'varied' : 'less-common',
       isRelief,
-      hintLimit: isRelief ? 3 : 1,
+      hintLimit: null,
       blockedLetters: [],
       specialGoal: isRelief ? 'none' : 'limited-moves',
     };
@@ -156,7 +156,7 @@ const levelDesign = level => {
     maxWordLength: 7,
     rarity: 'mixed',
     isRelief,
-    hintLimit: isRelief ? 3 : 1,
+    hintLimit: null,
     blockedLetters: [],
     specialGoal: isRelief ? 'none' : 'blocked-letters',
   };

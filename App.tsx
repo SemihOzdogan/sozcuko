@@ -177,7 +177,6 @@ function PresenceTracker() {
     };
 
     const initialize = async () => {
-      await configureLocalNotifications().catch(() => undefined);
       await touchPresence();
       // Uygulama açılırken daha önce oluşturulmuş daveti yeni sanıp
       // kullanıcıya tekrar notification göstermeyelim. Duel ekranı bu daveti

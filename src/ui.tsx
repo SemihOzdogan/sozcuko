@@ -112,12 +112,24 @@ export function Pill({
 export function Progress({
   value,
   color = UI_TOKENS.action.primary,
+  trackColor,
 }: {
   value: number;
   color?: string;
+  trackColor?: string;
 }) {
+  const isLight = useColorScheme() === 'light';
   return (
-    <View style={s.track}>
+    <View
+      style={[
+        s.track,
+        {
+          backgroundColor:
+            trackColor ??
+            (isLight ? 'rgba(20,32,51,.14)' : 'rgba(255,255,255,.15)'),
+        },
+      ]}
+    >
       <View style={[s.fill, { width: `${value}%`, backgroundColor: color }]} />
     </View>
   );
@@ -206,6 +218,7 @@ export function BackHeader({
   onBack,
   minimal = false,
   tagOnly = false,
+  rightContent,
 }: {
   title: string;
   tag: string;
@@ -213,6 +226,7 @@ export function BackHeader({
   onBack: () => void;
   minimal?: boolean;
   tagOnly?: boolean;
+  rightContent?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -221,11 +235,20 @@ export function BackHeader({
         <Text style={s.backText}>‹</Text>
       </Pressable>
       {minimal ? (
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, minWidth: 0 }} />
       ) : (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           {tagOnly ? (
-            <Pill color={color}>{tag}</Pill>
+            <View style={s.headerTagFrame}>
+              <Text
+                style={[
+                  s.headerTagText,
+                  { color: color === C.mint ? C.mintText : color },
+                ]}
+              >
+                {tag}
+              </Text>
+            </View>
           ) : (
             <>
               <Pill color={color}>{tag}</Pill>
@@ -234,6 +257,7 @@ export function BackHeader({
           )}
         </View>
       )}
+      {rightContent}
     </View>
   );
 }
@@ -291,4 +315,19 @@ const s = StyleSheet.create({
   },
   backText: { color: C.text, fontSize: 31, lineHeight: 32 },
   headerTitle: { color: C.text, fontSize: 21, fontWeight: '900', marginTop: 5 },
+  headerTagFrame: {
+    alignSelf: 'flex-start',
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderRadius: 16,
+    backgroundColor: C.raised,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  headerTagText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
 });

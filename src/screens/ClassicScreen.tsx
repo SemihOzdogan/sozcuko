@@ -7,10 +7,13 @@ import {
   PanResponder,
   Pressable,
   StyleSheet,
+  StatusBar,
   Text,
   View,
   useWindowDimensions,
+  useColorScheme,
   TouchableOpacity,
+  DynamicColorIOS,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,20 +31,21 @@ import {
   submitClassicWord,
 } from '../game/classicEngine';
 import { trackEvent } from '../services/analyticsService';
-import { showCheckpointAd } from '../services/adService';
+import { showCheckpointAd, showRewardedClueAd } from '../services/adService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Classic'>;
 type FeedbackTone = 'neutral' | 'success' | 'error';
-// Klasik bulmaca ekranı, oyuncunun odaklanmasını sağlayan sabit koyu oyun yüzeyini kullanır.
+const adaptive = (dark: string, light: string) =>
+  DynamicColorIOS({ dark, light }) as unknown as string;
 const C = {
   ...GlobalC,
-  bg: '#101729',
-  surface: '#17243B',
-  raised: '#213452',
-  text: '#FFFDF5',
-  muted: '#AAB9CC',
+  bg: adaptive('#101729', '#D7E3E4'),
+  surface: adaptive('#17243B', '#F0F6F3'),
+  raised: adaptive('#213452', '#E0ECE9'),
+  text: adaptive('#FFFDF5', '#18343B'),
+  muted: adaptive('#AAB9CC', '#5B7174'),
   ink: '#081426',
-  cream: '#FFF5D8',
+  cream: adaptive('#FFF5D8', '#6A4B15'),
 };
 const WHEEL_SIZE = 314;
 const LETTER_SIZE = 72;
@@ -108,6 +112,7 @@ const isPuzzleBoardComplete = (
 };
 export function ClassicScreen({ navigation }: Props) {
   const game = useGame();
+  const isLight = useColorScheme() === 'light';
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Base the whole game layout on the reference 390x844 viewport.
@@ -127,13 +132,13 @@ export function ClassicScreen({ navigation }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const selectedRef = useRef<number[]>([]);
   const submittingRef = useRef(false);
+  const hintInFlightRef = useRef(false);
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cellAnimationsRef = useRef<Record<string, Animated.Value>>({});
   const previousRevealedRef = useRef<Record<string, string>>({});
   const animationPuzzleRef = useRef<string | null>(null);
   const [solved, setSolved] = useState<string[]>([]);
   const [bonusWords, setBonusWords] = useState<string[]>([]);
-  const [hintUses, setHintUses] = useState(0);
   const [revealedCells, setRevealedCells] = useState<Record<string, string>>(
     {},
   );
@@ -145,6 +150,10 @@ export function ClassicScreen({ navigation }: Props) {
   const [clueMessage, setClueMessage] = useState<string | null>(null);
   const [isClueVisible, setIsClueVisible] = useState(false);
   const [isClueLoading, setIsClueLoading] = useState(false);
+  const [isClueRewardLoading, setIsClueRewardLoading] = useState(false);
+  const [isClueRewardUnavailable, setIsClueRewardUnavailable] =
+    useState(false);
+  const clueRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [successBurstVisible, setSuccessBurstVisible] = useState(false);
   const successBurstAnimation = useRef(new Animated.Value(0)).current;
   const [advanceRequested, setAdvanceRequested] = useState(false);
@@ -163,7 +172,6 @@ export function ClassicScreen({ navigation }: Props) {
     setSelected([]);
     setSolved([]);
     setBonusWords([]);
-    setHintUses(0);
     setRevealedCells({});
     setFeedback('');
     setIsSubmitting(false);
@@ -171,6 +179,12 @@ export function ClassicScreen({ navigation }: Props) {
     setClueMessage(null);
     setIsClueLoading(false);
     setIsClueVisible(false);
+    setIsClueRewardLoading(false);
+    setIsClueRewardUnavailable(false);
+    if (clueRetryTimerRef.current) {
+      clearTimeout(clueRetryTimerRef.current);
+      clueRetryTimerRef.current = null;
+    }
     setSuccessBurstVisible(false);
     setLoadError(null);
     setPuzzle(null);
@@ -195,6 +209,10 @@ export function ClassicScreen({ navigation }: Props) {
     return () => {
       active = false;
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+      if (clueRetryTimerRef.current) {
+        clearTimeout(clueRetryTimerRef.current);
+        clueRetryTimerRef.current = null;
+      }
     };
   }, [game.isHydrated, level, retry]);
   useEffect(() => {
@@ -208,7 +226,6 @@ export function ClassicScreen({ navigation }: Props) {
     setSelected([]);
     setSolved([]);
     setBonusWords([]);
-    setHintUses(0);
     setRevealedCells({});
   }, [advanceRequested, level, totalPuzzles]);
   useEffect(() => {
@@ -284,7 +301,18 @@ export function ClassicScreen({ navigation }: Props) {
     totalPuzzles > 0 && game.classicCompletedLevels.length >= totalPuzzles;
   if (allCompleted)
     return (
-      <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
+      <LinearGradient
+        colors={
+          isLight
+            ? ['#D7E3E4', '#C8D9D9', '#DDE9E5']
+            : ['#101729', '#17243B', '#213452']
+        }
+        style={s.root}
+      >
+        <StatusBar
+          barStyle={isLight ? 'dark-content' : 'light-content'}
+          backgroundColor={isLight ? '#D7E3E4' : '#101729'}
+        />
         <BackHeader
           title="Klasik Kelime"
           tag="TÜM BÖLÜMLER TAMAM"
@@ -303,7 +331,18 @@ export function ClassicScreen({ navigation }: Props) {
     );
   if (!puzzle)
     return (
-      <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
+      <LinearGradient
+        colors={
+          isLight
+            ? ['#D7E3E4', '#C8D9D9', '#DDE9E5']
+            : ['#101729', '#17243B', '#213452']
+        }
+        style={s.root}
+      >
+        <StatusBar
+          barStyle={isLight ? 'dark-content' : 'light-content'}
+          backgroundColor={isLight ? '#D7E3E4' : '#101729'}
+        />
         <BackHeader
           title="Klasik Kelime"
           tag="BÖLÜM YÜKLENİYOR"
@@ -339,10 +378,10 @@ export function ClassicScreen({ navigation }: Props) {
   const boardOuterPadding = Math.round(10 * uiScale);
   // Give the wheel a little more of the vertical space while keeping the
   // board responsive on shorter iPhones.
-  const minimumWheelSize = 220;
+  const minimumWheelSize = 132;
   const maximumWheelSize = Math.round(WHEEL_SIZE * Math.min(1, uiScale + 0.08));
-  // BackHeader = safe-area top + 42px button + 14px bottom padding.
-  const headerHeight = insets.top + 42 + 14;
+  // BackHeader = safe-area top + 46px XP frame + 14px bottom padding.
+  const headerHeight = insets.top + 46 + 14;
   const contentPadding = 12 + 24;
   const boardMargin = Math.round(4 * uiScale);
   // Selection panel without the wheel: clue button, word display, feedback,
@@ -358,7 +397,7 @@ export function ClassicScreen({ navigation }: Props) {
     availableContentHeight - reservedSelection - minimumWheelSize - boardMargin,
   );
   const sizingPitch = Math.max(
-    22,
+    18,
     Math.min(
       56 * uiScale,
       (screenWidth - 32) / sizingColumns,
@@ -479,15 +518,8 @@ export function ClassicScreen({ navigation }: Props) {
     setCanRetrySubmit(false);
   };
   const showHint = () => {
-    const hintLimit = puzzle.design?.hintLimit;
-    if (
-      hintLimit !== null &&
-      hintLimit !== undefined &&
-      hintUses >= hintLimit
-    ) {
-      setFeedback('Bu bölümdeki ipucu hakkın bitti.');
-      return;
-    }
+    if (hintInFlightRef.current) return;
+    hintInFlightRef.current = true;
     const hiddenSlots = puzzle.words
       .filter(word => !solved.includes(word))
       .flatMap(word => puzzle.placements[word])
@@ -496,16 +528,17 @@ export function ClassicScreen({ navigation }: Props) {
       hiddenSlots[Math.floor(Math.random() * hiddenSlots.length)];
     if (!hiddenSlot) {
       setFeedback('Bu bölümde açılacak başka harf kalmadı.');
+      hintInFlightRef.current = false;
       return;
     }
     if (!game.spendXp(HINT_COST)) {
       setFeedback(`Yetersiz XP. İpucu için ${HINT_COST} XP gerekiyor.`);
+      hintInFlightRef.current = false;
       return;
     }
     const key = `${hiddenSlot.row}:${hiddenSlot.column}`;
     trackEvent('hint_used', { level, cost: HINT_COST });
     const nextRevealedCells = { ...revealedCells, [key]: hiddenSlot.letter };
-    setHintUses(value => value + 1);
     setRevealedCells(nextRevealedCells);
     if (isPuzzleBoardComplete(puzzle, nextRevealedCells)) {
       game.completeClassicLevel(level);
@@ -513,6 +546,7 @@ export function ClassicScreen({ navigation }: Props) {
       requestAdvance();
     }
     setFeedback(`İpucu kullanıldı: bir harf açıldı. · -${HINT_COST} XP`);
+    hintInFlightRef.current = false;
   };
   const showClue = async () => {
     const target = puzzle.words.find(word => !solved.includes(word));
@@ -521,6 +555,25 @@ export function ClassicScreen({ navigation }: Props) {
       setIsClueVisible(true);
       return;
     }
+    const clueUses = game.classicClueUses[String(level)] ?? 0;
+    if (clueUses > 0) {
+      setIsClueRewardLoading(true);
+      const rewardGranted = await showRewardedClueAd();
+      setIsClueRewardLoading(false);
+      if (!rewardGranted) {
+        showFeedback('Reklam şu anda yüklenemedi. Lütfen tekrar dene.', 'error');
+        setIsClueRewardUnavailable(true);
+        if (clueRetryTimerRef.current) {
+          clearTimeout(clueRetryTimerRef.current);
+        }
+        clueRetryTimerRef.current = setTimeout(() => {
+          clueRetryTimerRef.current = null;
+          setIsClueRewardUnavailable(false);
+        }, 15000);
+        return;
+      }
+    }
+    game.recordClassicClueUse(level);
     const meaning = WORD_CLUES[target];
     setIsClueVisible(true);
     setIsClueLoading(!meaning);
@@ -591,20 +644,33 @@ export function ClassicScreen({ navigation }: Props) {
     solved.length === puzzle.words.length ||
     isPuzzleBoardComplete(puzzle, revealedCells);
   return (
-    <LinearGradient colors={[C.bg, C.surface, C.raised]} style={s.root}>
-      <View style={s.cloud} />
-      <View style={s.hill} />
+    <LinearGradient
+      colors={
+        isLight
+          ? ['#D7E3E4', '#C8D9D9', '#DDE9E5']
+          : ['#101729', '#17243B', '#213452']
+      }
+      style={s.root}
+    >
+      <StatusBar
+        barStyle={isLight ? 'dark-content' : 'light-content'}
+        backgroundColor={isLight ? '#D7E3E4' : '#101729'}
+      />
       <BackHeader
         title=""
-        tag={`KLASİK · BÖLÜM ${level + 1}${puzzle.design?.isRelief ? ' · RAHAT' : ''}`}
+        tag={`KLASİK · BÖLÜM ${level + 1}${
+          puzzle.design?.isRelief ? ' · RAHAT' : ''
+        }`}
         color={C.mint}
         tagOnly
         onBack={navigation.goBack}
+        rightContent={
+          <View style={s.xpBadge}>
+            <Text style={s.xpIcon}>XP</Text>
+            <Text style={s.xpText}>{game.xp.toLocaleString('tr-TR')}</Text>
+          </View>
+        }
       />
-      <View style={s.xpBadge}>
-        <Text style={s.xpIcon}>XP</Text>
-        <Text style={s.xpText}>{game.xp.toLocaleString('tr-TR')}</Text>
-      </View>
       <View style={s.content}>
         <View
           style={[
@@ -695,12 +761,19 @@ export function ClassicScreen({ navigation }: Props) {
           ]}
         >
           <TouchableOpacity
-            onPress={() => showClue()}
+            onPress={showClue}
+            disabled={isClueRewardLoading}
             accessibilityLabel="Konu ipucunu göster"
-            style={[s.utilityButton, s.clueButton]}
+            style={[
+              s.utilityButton,
+              s.clueButton,
+              isClueRewardLoading && s.hintDisabled,
+            ]}
           >
             <Text style={s.utilityText}>🔎</Text>
-            <Text style={s.utilityLabel}>Konu ipucu</Text>
+            <Text style={s.utilityLabel}>
+              {isClueRewardLoading ? 'Reklam hazırlanıyor…' : 'Konu ipucu'}
+            </Text>
           </TouchableOpacity>
           <View
             style={[
@@ -827,12 +900,7 @@ export function ClassicScreen({ navigation }: Props) {
           <View style={s.utilityRow}>
             <TouchableOpacity
               onPress={showHint}
-              disabled={
-                complete ||
-                (puzzle.design?.hintLimit !== null &&
-                  puzzle.design?.hintLimit !== undefined &&
-                  hintUses >= puzzle.design.hintLimit)
-              }
+              disabled={complete || game.xp < HINT_COST}
               accessibilityLabel="Harf al"
               style={[
                 s.utilityButton,
@@ -962,29 +1030,10 @@ export function ClassicScreen({ navigation }: Props) {
 }
 const s = StyleSheet.create({
   root: { flex: 1 },
-  cloud: {
-    position: 'absolute',
-    width: 300,
-    height: 120,
-    borderRadius: 100,
-    backgroundColor: C.surface,
-    right: -110,
-    top: 290,
-  },
-  hill: {
-    position: 'absolute',
-    width: 620,
-    height: 260,
-    borderRadius: 300,
-    backgroundColor: C.raised,
-    bottom: -170,
-    left: -100,
-    opacity: 0.7,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 10,
-    paddingTop: 12,
+    paddingTop: 4,
     paddingBottom: 24,
   },
   contentContainer: {
@@ -995,20 +1044,22 @@ const s = StyleSheet.create({
     paddingBottom: 28,
   },
   xpBadge: {
-    position: 'absolute',
-    top: 62,
-    right: 16,
-    zIndex: 10,
     height: 42,
+    flexShrink: 0,
+    marginTop: 5,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 0,
-    marginBottom: 8,
+    marginBottom: 0,
     borderRadius: 16,
-    backgroundColor: 'rgba(248,199,68,.18)',
+    backgroundColor: adaptive('rgba(248,199,68,.18)', 'rgba(244,200,75,.22)'),
     borderWidth: 1,
-    borderColor: 'rgba(248,199,68,.3)',
+    borderColor: adaptive('rgba(248,199,68,.3)', 'rgba(181,132,27,.35)'),
+    shadowColor: '#17343A',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   xpIcon: { color: C.gold, fontSize: 10, marginRight: 6 },
   xpText: { color: C.text, fontSize: 12, fontWeight: '900' },
@@ -1016,12 +1067,17 @@ const s = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: C.surface,
+    backgroundColor: C.raised,
     borderRadius: 22,
     paddingVertical: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.12)',
+    borderColor: adaptive('rgba(255,255,255,.12)', 'rgba(40,83,87,.16)'),
+    shadowColor: '#19383D',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
   },
   board: { position: 'relative' },
   cell: {
@@ -1032,7 +1088,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  activeCell: { backgroundColor: 'rgba(244,251,255,.94)' },
+  activeCell: {
+    backgroundColor: adaptive('rgba(244,251,255,.94)', '#F2F7F4'),
+    borderWidth: 1,
+    borderColor: adaptive('rgba(255,255,255,.08)', 'rgba(65,111,111,.16)'),
+  },
   filled: { backgroundColor: C.coral },
   letterOverlay: { ...StyleSheet.absoluteFill, zIndex: 50, elevation: 10 },
   cellText: {
@@ -1055,19 +1115,24 @@ const s = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.13)',
+    borderColor: adaptive('rgba(255,255,255,.13)', 'rgba(40,83,87,.16)'),
+    shadowColor: '#19383D',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   wordDisplay: {
     minWidth: 190,
     height: 42,
     paddingHorizontal: 18,
     borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,.10)',
+    backgroundColor: adaptive('rgba(255,255,255,.10)', 'rgba(39,86,88,.08)'),
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.16)',
+    borderColor: adaptive('rgba(255,255,255,.16)', 'rgba(39,86,88,.18)'),
   },
   wordDisplayText: {
     color: C.text,
@@ -1081,9 +1146,14 @@ const s = StyleSheet.create({
     height: WHEEL_SIZE,
     borderRadius: WHEEL_SIZE / 2,
     marginTop: 12,
-    backgroundColor: 'rgba(236,248,255,.08)',
+    backgroundColor: adaptive('rgba(236,248,255,.08)', 'rgba(39,86,88,.07)'),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.12)',
+    borderColor: adaptive('rgba(255,255,255,.12)', 'rgba(39,86,88,.18)'),
+    shadowColor: '#17343A',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
     overflow: 'hidden',
   },
   letter: {
@@ -1091,16 +1161,19 @@ const s = StyleSheet.create({
     width: LETTER_SIZE,
     height: LETTER_SIZE,
     borderRadius: LETTER_SIZE / 2,
-    backgroundColor: C.gold,
+    backgroundColor: adaptive(C.gold, '#F4C84C'),
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
     shadowColor: '#061B4C',
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.18,
     shadowRadius: 5,
     elevation: 4,
   },
-  activeLetter: { backgroundColor: C.mint, transform: [{ scale: 1.08 }] },
+  activeLetter: {
+    backgroundColor: adaptive(C.mint, '#19B7A7'),
+    transform: [{ scale: 1.08 }],
+  },
   letterText: { color: C.ink, fontWeight: '900', fontSize: 30 },
   line: {
     position: 'absolute',
@@ -1113,9 +1186,9 @@ const s = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: 'rgba(22,214,196,.13)',
+    backgroundColor: adaptive('rgba(22,214,196,.13)', 'rgba(25,183,167,.10)'),
     borderWidth: 1,
-    borderColor: 'rgba(22,214,196,.28)',
+    borderColor: adaptive('rgba(22,214,196,.28)', 'rgba(17,126,116,.28)'),
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -1149,8 +1222,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
   },
   hintDisabled: { opacity: 0.45 },
-  utilityText: { color: C.mint, fontSize: 20, fontWeight: '900' },
-  utilityLabel: { color: C.mint, fontSize: 12, fontWeight: '900' },
+  utilityText: {
+    color: adaptive(C.mint, '#087F76'),
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  utilityLabel: {
+    color: adaptive(C.mint, '#087F76'),
+    fontSize: 12,
+    fontWeight: '900',
+  },
   wordBadge: {
     marginTop: 12,
     minWidth: 220,
@@ -1188,24 +1269,28 @@ const s = StyleSheet.create({
     gap: 8,
   },
   feedbackSuccess: { color: C.mint },
-  feedbackError: { color: '#FF9B83' },
+  feedbackError: { color: adaptive('#FF9B83', '#B44A1E') },
   retrySubmit: {
     minHeight: 28,
     paddingHorizontal: 10,
     borderRadius: 10,
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,155,131,.14)',
+    backgroundColor: adaptive('rgba(255,155,131,.14)', 'rgba(180,74,30,.10)'),
     borderWidth: 1,
-    borderColor: 'rgba(255,155,131,.34)',
+    borderColor: adaptive('rgba(255,155,131,.34)', 'rgba(180,74,30,.28)'),
   },
   retrySubmitPressed: { opacity: 0.7 },
-  retrySubmitText: { color: '#FFB09C', fontSize: 9, fontWeight: '900' },
+  retrySubmitText: {
+    color: adaptive('#FFB09C', '#B44A1E'),
+    fontSize: 9,
+    fontWeight: '900',
+  },
   modalBackdrop: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: 'rgba(3, 10, 24, 0.78)',
+    backgroundColor: adaptive('rgba(3, 10, 24, 0.78)', 'rgba(23,51,64,.38)'),
   },
   clueModal: {
     width: '100%',

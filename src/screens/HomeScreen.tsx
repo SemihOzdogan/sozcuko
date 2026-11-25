@@ -47,7 +47,7 @@ export function HomeScreen({ navigation }: Props) {
   const displayName =
     session?.user?.user_metadata?.name ||
     session?.user?.email?.split('@')[0] ||
-    'Oyuncu';
+    'Misafir';
   const initials = displayName.slice(0, 2).toUpperCase();
   const { width: screenWidth } = useWindowDimensions();
   const isLight = useColorScheme() === 'light';
@@ -107,45 +107,40 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={s.xpValue}>{game.xp.toLocaleString('tr-TR')}</Text>
           </View>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Klasik oyunda bölüm ${
-            game.classicCompletedLevels.length + 1
-          }'e devam et`}
-          onPress={() => navigation.navigate('Classic')}
-          android_ripple={{ color: 'rgba(255,255,255,.08)' }}
-          style={({ pressed }) => [s.heroPressable, pressed && s.pressed]}
+        <Card
+          colors={
+            isLight
+              ? ['#D8F5F0', '#FFFFFF']
+              : ['#12355B', '#0E6B73']
+          }
+          preserveColors
+          style={s.hero}
         >
-          <Card
-            colors={
-              isLight
-                ? ['#D8F5F0', '#FFFFFF']
-                : [C.raised, '#0E6B73']
-            }
-            preserveColors
-            style={s.hero}
-          >
-            <View style={s.heroContent}>
-              <View style={s.heroTop}>
-                <Pill color={C.mint}>KLASİK OYUN</Pill>
-              </View>
-              <Text style={s.heroTitle} numberOfLines={2}>
-                Bölüm {game.classicCompletedLevels.length + 1}'i çözmeye devam et.
-              </Text>
-              <Text style={s.heroText} numberOfLines={2}>
-                Kelimeleri bul, ipuçlarını kullan ve bir sonraki bölümü aç.
-              </Text>
-              <View style={s.heroProgressHeader}>
-                <Text style={s.heroProgressLabel}>KLASİK İLERLEMESİ</Text>
-                <Text style={s.heroProgressValue}>{`${classicProgress}%`}</Text>
-              </View>
-              <View style={s.heroProgress}>
-                <Progress value={classicProgress} color={C.mint} />
-              </View>
+          <View style={s.heroContent}>
+            <View style={s.heroTop}>
+              <Pill color={C.mint}>KLASİK OYUN</Pill>
             </View>
-          </Card>
-        </Pressable>
-        <Header title="Oyun modları" detail="3 farklı oyun tarzı" />
+            <Text style={s.heroTitle} numberOfLines={2}>
+              Bölüm {game.classicCompletedLevels.length + 1}'i çözmeye devam et.
+            </Text>
+            <Text style={s.heroText} numberOfLines={2}>
+              Kelimeleri bul, ipuçlarını kullan ve bir sonraki bölümü aç.
+            </Text>
+            <View style={s.heroProgressHeader}>
+              <Text style={s.heroProgressLabel}>KLASİK İLERLEMESİ</Text>
+              <Text style={s.heroProgressValue}>{`${classicProgress}%`}</Text>
+            </View>
+            <View style={s.heroProgress}>
+              <Progress
+                value={classicProgress}
+                color={C.mint}
+                trackColor={
+                  isLight ? 'rgba(20,32,51,.16)' : 'rgba(255,255,255,.26)'
+                }
+              />
+            </View>
+          </View>
+        </Card>
         <View style={s.modeList}>
           {modes.map(([title, copy, accent, dark, route]) => (
             <Pressable
@@ -161,7 +156,7 @@ export function HomeScreen({ navigation }: Props) {
                     ? ['#D8F5F0', '#FFFFFF']
                     : isLight
                       ? ['#FFFFFF', '#FFFFFF']
-                      : [dark, C.surface]
+                      : [dark, '#17243B']
                 }
                 preserveColors
                 style={s.modeCard}
@@ -383,7 +378,7 @@ const s = StyleSheet.create({
     textAlign: 'right',
     right: 10,
   },
-  modeList: { gap: 9 },
+  modeList: { gap: 9, marginTop: 10},
   modePress: { alignSelf: 'stretch' },
   modeCard: {
     minHeight: 80,

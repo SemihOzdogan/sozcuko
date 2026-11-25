@@ -14,6 +14,7 @@ type GameState = {
   classicScore: number;
   classicWords: number;
   classicCompletedLevels: number[];
+  classicClueUses: Record<string, number>;
   isHydrated: boolean;
   duelWins: number;
   leaguePoints: number;
@@ -24,16 +25,25 @@ type GameState = {
   spendXp: (amount: number) => boolean;
   solveClassic: () => void;
   completeClassicLevel: (level: number) => void;
+  recordClassicClueUse: (level: number) => void;
   finishDuel: (result: 'win' | 'lose' | 'draw') => void;
 };
 const GameContext = createContext<GameState | null>(null);
 // İlerleme sıfırlama sürümü: eski cihaz kayıtları yeni sezona taşınmaz.
-const GAME_STATE_KEY = '@sozcuko/game-state:v2';
+// Sunucu tarafındaki toplu temizleme sonrası eski cihaz ilerlemesi yeniden
+// yüklenmesin diye yerel kayıt sürümü bilinçli olarak artırıldı.
+const GAME_STATE_KEY = '@sozcuko/game-state:v3';
+const LEGACY_GAME_STATE_KEYS = [
+  '@sozcuko/game-state',
+  '@sozcuko/game-state:v1',
+  '@sozcuko/game-state:v2',
+];
 const DEFAULT_STATE = {
   xp: 0,
   classicScore: 0,
   classicWords: 0,
   classicCompletedLevels: [] as number[],
+  classicClueUses: {} as Record<string, number>,
   duelWins: 0,
   leaguePoints: 0,
   leagueWins: 0,
@@ -48,6 +58,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [classicCompletedLevels, setClassicCompletedLevels] = useState<
     number[]
   >(DEFAULT_STATE.classicCompletedLevels);
+  const [classicClueUses, setClassicClueUses] = useState<
+    Record<string, number>
+  >(DEFAULT_STATE.classicClueUses);
   const [isHydrated, setIsHydrated] = useState(false);
   const [duelWins, setDuelWins] = useState(DEFAULT_STATE.duelWins);
   const [leaguePoints, setLeaguePoints] = useState(DEFAULT_STATE.leaguePoints);
@@ -55,7 +68,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [leagueLosses, setLeagueLosses] = useState(DEFAULT_STATE.leagueLosses);
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(GAME_STATE_KEY)
+    AsyncStorage.multiRemove(LEGACY_GAME_STATE_KEYS)
+      .then(() => AsyncStorage.getItem(GAME_STATE_KEY))
       .then(raw => {
         if (!active) return;
         try {
@@ -75,6 +89,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   level => Number.isInteger(level) && level >= 0,
                 ),
               );
+            if (
+              stored.classicClueUses &&
+              typeof stored.classicClueUses === 'object' &&
+              !Array.isArray(stored.classicClueUses)
+            ) {
+              const validClueUses = Object.fromEntries(
+                Object.entries(stored.classicClueUses).filter(
+                  ([key, value]) =>
+                    /^\d+$/.test(key) &&
+                    typeof value === 'number' &&
+                    Number.isInteger(value) &&
+                    value >= 0,
+                ),
+              );
+              setClassicClueUses(validClueUses);
+            }
             if (typeof stored.duelWins === 'number')
               setDuelWins(stored.duelWins);
             if (typeof stored.leaguePoints === 'number')
@@ -105,6 +135,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicScore,
       classicWords,
       classicCompletedLevels,
+      classicClueUses,
       duelWins,
       leaguePoints,
       leagueWins,
@@ -118,6 +149,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     classicScore,
     classicWords,
     classicCompletedLevels,
+    classicClueUses,
     duelWins,
     leaguePoints,
     leagueWins,
@@ -146,6 +178,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicScore,
       classicWords,
       classicCompletedLevels,
+      classicClueUses,
       isHydrated,
       duelWins,
       leaguePoints,
@@ -164,6 +197,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
           value.includes(level) ? value : [...value, level],
         );
       },
+      recordClassicClueUse: (level: number) => {
+        setClassicClueUses(value => {
+          const key = String(level);
+          return { ...value, [key]: (value[key] ?? 0) + 1 };
+        });
+      },
       finishDuel: (result: 'win' | 'lose' | 'draw') => {
         if (result === 'win') {
           setDuelWins(value => value + 1);
@@ -176,6 +215,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicScore,
       classicWords,
       classicCompletedLevels,
+      classicClueUses,
       isHydrated,
       duelWins,
       leaguePoints,

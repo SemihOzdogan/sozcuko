@@ -43,7 +43,7 @@ export const ensureLeaguePlayer = async (
       },
       body: JSON.stringify({
         player_id: playerId,
-        display_name: displayName || 'Oyuncu',
+        display_name: displayName || 'Misafir',
       }),
     },
   );
@@ -63,7 +63,7 @@ export const touchLeaguePlayer = async (
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify({
-        display_name: displayName || 'Oyuncu',
+        display_name: displayName || 'Misafir',
         updated_at: new Date().toISOString(),
       }),
     },
@@ -92,6 +92,15 @@ export const fetchLeaguePlayers = async (limit = 100) =>
   request<LeaguePlayer[]>(
     `${SUPABASE_REST_URL}/league_players?select=*&order=points.desc,updated_at.asc&limit=${limit}`,
   );
+
+export const fetchLeaguePlayer = async (playerId: string) => {
+  const players = await request<LeaguePlayer[]>(
+    `${SUPABASE_REST_URL}/league_players?player_id=eq.${encodeURIComponent(
+      playerId,
+    )}&select=*&limit=1`,
+  );
+  return players[0] ?? null;
+};
 
 export const fetchActiveLeaguePlayers = async (
   playerId: string,
@@ -125,7 +134,7 @@ export const recordLeagueMatch = async (
       method: 'POST',
       body: JSON.stringify({
         p_player_id: playerId,
-        p_display_name: displayName || 'Oyuncu',
+        p_display_name: displayName || 'Misafir',
         p_result: result,
       }),
     },

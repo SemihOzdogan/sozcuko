@@ -42,7 +42,7 @@ export const getLevelDesign = (level: number): LevelDesign => {
       minWordLength: 4,
       maxWordLength: 4,
       rarity: 'common',
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
     };
   if (section <= 20)
     return {
@@ -51,7 +51,7 @@ export const getLevelDesign = (level: number): LevelDesign => {
       minWordLength: 5,
       maxWordLength: 5,
       rarity: isRelief ? 'varied' : 'less-common',
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
     };
   if (section <= 35)
     return {
@@ -60,7 +60,7 @@ export const getLevelDesign = (level: number): LevelDesign => {
       minWordLength: 5,
       maxWordLength: 6,
       rarity: isRelief ? 'varied' : 'less-common',
-      hintLimit: isRelief ? 3 : 2,
+      hintLimit: null,
       specialGoal: isRelief ? 'none' : 'limited-moves',
     };
   if (section <= 50)
@@ -70,7 +70,7 @@ export const getLevelDesign = (level: number): LevelDesign => {
       minWordLength: 6,
       maxWordLength: 7,
       rarity: isRelief ? 'varied' : 'less-common',
-      hintLimit: isRelief ? 3 : 1,
+      hintLimit: null,
       specialGoal: isRelief ? 'none' : 'limited-moves',
     };
   return {
@@ -79,7 +79,7 @@ export const getLevelDesign = (level: number): LevelDesign => {
     minWordLength: 3,
     maxWordLength: 7,
     rarity: 'mixed',
-    hintLimit: isRelief ? 3 : 1,
+    hintLimit: null,
     specialGoal: isRelief ? 'none' : 'blocked-letters',
   };
 };

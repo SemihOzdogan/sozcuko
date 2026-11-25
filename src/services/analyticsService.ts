@@ -8,7 +8,13 @@ export type AnalyticsEvent =
   | 'duel_started'
   | 'duel_word_submitted'
   | 'duel_finished'
-  | 'league_viewed';
+  | 'league_viewed'
+  | 'ad_requested'
+  | 'ad_loaded'
+  | 'ad_failed'
+  | 'ad_opened'
+  | 'ad_closed'
+  | 'ad_reward_earned';
 
 type AnalyticsProperties = Record<string, boolean | number | string | null>;
 
