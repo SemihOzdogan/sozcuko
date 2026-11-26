@@ -21,9 +21,23 @@ type PuzzleRow = Omit<ClassicPuzzle, 'bonusWords'> & {
   design?: ClassicPuzzle['design'];
 };
 
+const normalizePuzzleWord = (word: string): string =>
+  word.trim().toLocaleUpperCase('tr-TR');
+
 const mapPuzzle = (row: PuzzleRow, level: number): ClassicPuzzle => ({
   ...row,
-  bonusWords: row.bonus_words ?? [],
+  letters: row.letters.map(normalizePuzzleWord),
+  words: row.words.map(normalizePuzzleWord),
+  bonusWords: (row.bonus_words ?? []).map(normalizePuzzleWord),
+  placements: Object.fromEntries(
+    Object.entries(row.placements).map(([word, placement]) => [
+      normalizePuzzleWord(word),
+      placement.map(slot => ({
+        ...slot,
+        letter: normalizePuzzleWord(slot.letter),
+      })),
+    ]),
+  ),
   design:
     row.design && Object.keys(row.design).length > 0
       ? row.design

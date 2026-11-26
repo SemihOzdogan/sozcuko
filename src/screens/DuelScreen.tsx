@@ -15,12 +15,17 @@ import {
   DynamicColorIOS,
   useWindowDimensions,
 } from 'react-native';
+import LottieView from 'lottie-react-native';
 import type { RootStackParamList } from '../../App';
 import { BackHeader, C, gameFeedback, Progress } from '../ui';
 import { useGame } from '../gameState';
 import { useAuth } from '../authState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { DuelEvent, DuelRoom } from '../services/duelService';
+import type {
+  DuelDifficulty,
+  DuelEvent,
+  DuelRoom,
+} from '../services/duelService';
 import {
   acceptDuelInvitationForPlayer,
   cancelWaitingDuel,
@@ -43,16 +48,49 @@ import {
   touchLeaguePlayer,
 } from '../services/leagueService';
 import { trackEvent } from '../services/analyticsService';
+import { playDuelOutcomeSound } from '../services/duelAudioService';
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
 const adaptive = (dark: string, light: string) =>
   DynamicColorIOS({ dark, light }) as unknown as string;
-const ROUND_SECONDS = 10;
+const ROUND_SECONDS = 60;
 const MATCHMAKING_SECONDS = 30;
 const DUEL_REWARDS = {
   win: { xp: 30, league: 25 },
   draw: { xp: 0, league: 5 },
   lose: { xp: 0, league: -15 },
 } as const;
+const DUEL_DIFFICULTIES: Array<{
+  id: DuelDifficulty;
+  title: string;
+  detail: string;
+  letters: string;
+  seconds: number;
+}> = [
+  {
+    id: 'easy',
+    title: 'Kolay',
+    detail: 'Daha kısa ve yaygın kelimeler',
+    letters: '≤ 5 harf',
+    seconds: 90,
+  },
+  {
+    id: 'normal',
+    title: 'Normal',
+    detail: 'Dengeli klasik düello',
+    letters: '6 harf',
+    seconds: 60,
+  },
+  {
+    id: 'hard',
+    title: 'Zor',
+    detail: 'Uzun ve daha seçici kelimeler',
+    letters: '7+ harf',
+    seconds: 45,
+  },
+];
+const getDuelDuration = (difficulty: DuelDifficulty | undefined) =>
+  DUEL_DIFFICULTIES.find(option => option.id === (difficulty ?? 'normal'))
+    ?.seconds ?? 60;
 const WHEEL_SIZE = 314;
 const RADIUS = 112;
 const LETTER_SIZE = 72;
@@ -101,6 +139,13 @@ export function DuelScreen({ navigation, route }: Props) {
   const [opponentName, setOpponentName] = useState('RAKİP');
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [selectedOpponent, setSelectedOpponent] = useState<string | null>(null);
+  const [pendingOpponent, setPendingOpponent] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] =
+    useState<DuelDifficulty>('normal');
+  const [difficultyModalVisible, setDifficultyModalVisible] = useState(false);
   const [isQuickMatch, setIsQuickMatch] = useState(false);
   const [matchmakingSeconds, setMatchmakingSeconds] =
     useState(MATCHMAKING_SECONDS);
@@ -157,7 +202,11 @@ export function DuelScreen({ navigation, route }: Props) {
     setMatchmakingSeconds(MATCHMAKING_SECONDS);
 
     try {
-      const nextRoom = await createDuelInvitation(playerId, opponent.player_id);
+      const nextRoom = await createDuelInvitation(
+        playerId,
+        opponent.player_id,
+        'normal',
+      );
       if (requestId !== matchmakingRequestId.current) return;
       setRoom(nextRoom);
       trackEvent('duel_started', {
@@ -313,6 +362,7 @@ export function DuelScreen({ navigation, route }: Props) {
         const finalEvents = await fetchDuelEvents(roomId);
         appendEvents(finalEvents);
         setResult(ownResult.result);
+        playDuelOutcomeSound(ownResult.result);
         trackEvent('duel_finished', {
           result: ownResult.result,
           playerScore: ownResult.score,
@@ -370,11 +420,7 @@ export function DuelScreen({ navigation, route }: Props) {
   }, [displayName, session?.user?.id]);
 
   useEffect(() => {
-    if (
-      !room ||
-      room.status !== 'waiting' ||
-      room.player_two_id !== playerId
-    ) {
+    if (!room || room.status !== 'waiting' || room.player_two_id !== playerId) {
       return;
     }
     let active = true;
@@ -387,7 +433,13 @@ export function DuelScreen({ navigation, route }: Props) {
     return () => {
       active = false;
     };
-  }, [playerId, room?.id, room?.player_one_id, room?.player_two_id, room?.status]);
+  }, [
+    playerId,
+    room?.id,
+    room?.player_one_id,
+    room?.player_two_id,
+    room?.status,
+  ]);
 
   useEffect(() => {
     if (!room || room.status !== 'playing' || !room.player_two_id) {
@@ -414,7 +466,13 @@ export function DuelScreen({ navigation, route }: Props) {
     return () => {
       active = false;
     };
-  }, [playerId, room?.id, room?.player_one_id, room?.player_two_id, room?.status]);
+  }, [
+    playerId,
+    room?.id,
+    room?.player_one_id,
+    room?.player_two_id,
+    room?.status,
+  ]);
 
   useEffect(() => {
     if (!playerId || playerId === 'local-player' || room?.status === 'playing')
@@ -469,24 +527,40 @@ export function DuelScreen({ navigation, route }: Props) {
   const startDuelWith = useCallback(
     async (opponentId: string, opponentName: string) => {
       if (selectedOpponent || room) return;
-      setIsQuickMatch(false);
-      setSelectedOpponent(opponentId);
-      setRoomError('');
-      try {
-        const invitation = await createDuelInvitation(playerId, opponentId);
-        setRoom(invitation);
-        setFeedback(`${opponentName} davet edildi. Kabul etmesi bekleniyor…`);
-      } catch (reason) {
-        setSelectedOpponent(null);
-        setRoomError(
-          reason instanceof Error
-            ? reason.message
-            : 'Düello daveti gönderilemedi.',
-        );
-      }
+      setPendingOpponent({ id: opponentId, name: opponentName });
+      setSelectedDifficulty('normal');
+      setDifficultyModalVisible(true);
     },
-    [playerId, room, selectedOpponent],
+    [room, selectedOpponent],
   );
+
+  const sendInvitation = useCallback(async () => {
+    if (!pendingOpponent || selectedOpponent || room) return;
+    setDifficultyModalVisible(false);
+    setIsQuickMatch(false);
+    setSelectedOpponent(pendingOpponent.id);
+    setRoomError('');
+    try {
+      const invitation = await createDuelInvitation(
+        playerId,
+        pendingOpponent.id,
+        selectedDifficulty,
+      );
+      setRoom(invitation);
+      setFeedback(
+        `${pendingOpponent.name} davet edildi. Kabul etmesi bekleniyor…`,
+      );
+    } catch (reason) {
+      setSelectedOpponent(null);
+      setRoomError(
+        reason instanceof Error
+          ? reason.message
+          : 'Düello daveti gönderilemedi.',
+      );
+    } finally {
+      setPendingOpponent(null);
+    }
+  }, [pendingOpponent, playerId, room, selectedDifficulty, selectedOpponent]);
 
   const acceptInvitation = async () => {
     if (!room || room.player_two_id !== playerId) return;
@@ -530,7 +604,7 @@ export function DuelScreen({ navigation, route }: Props) {
           syncRemaining(nextRoom.ends_at);
           return;
         }
-        // 10 saniyelik oyun penceresi polling aralığında kaçırılmış olabilir.
+        // Oyun penceresi polling aralığında kaçırılmış olabilir.
         // Oda bitmiş ama iki oyuncu da atanmışsa sonuç ekranına doğru ilerle.
         if (nextRoom?.status === 'finished' && nextRoom.player_two_id) {
           setRoom({ ...nextRoom, status: 'playing' });
@@ -708,7 +782,11 @@ export function DuelScreen({ navigation, route }: Props) {
                 {inviterName} seni düelloya çağırdı
               </Text>
               <Text style={s.waitingCopy}>
-                Kabul ettiğinde 10 saniyelik test karşılaşması başlayacak.
+                {DUEL_DIFFICULTIES.find(
+                  option => option.id === (room.difficulty ?? 'normal'),
+                )?.title ?? 'Normal'}{' '}
+                modunda {getDuelDuration(room.difficulty)} saniyelik düello
+                başlayacak.
               </Text>
               <Pressable
                 onPress={acceptInvitation}
@@ -766,9 +844,9 @@ export function DuelScreen({ navigation, route }: Props) {
                       seçtiğinde davet gönderilir.
                     </Text>
                     <View style={s.lobbyFooter}>
-                      <Text style={s.lobbyFooterLabel}>10 SANİYE</Text>
+                      <Text style={s.lobbyFooterLabel}>60 SANİYE</Text>
                       <Text style={s.lobbyFooterHint}>
-                        10 saniye, tek hedef: daha çok kelime
+                        Zorluğu seç, rakibinden daha çok kelime bul
                       </Text>
                     </View>
                     <Pressable
@@ -832,7 +910,7 @@ export function DuelScreen({ navigation, route }: Props) {
               <Text style={s.vs}>VS</Text>
               <Text style={s.timer}>{seconds} sn</Text>
               <Progress
-                value={(seconds / ROUND_SECONDS) * 100}
+                value={(seconds / getDuelDuration(room.difficulty)) * 100}
                 color={C.coral}
               />
             </View>
@@ -942,6 +1020,79 @@ export function DuelScreen({ navigation, route }: Props) {
         </View>
       ) : null}
       <Modal
+        visible={difficultyModalVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => {
+          setDifficultyModalVisible(false);
+          setPendingOpponent(null);
+        }}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.difficultyCard}>
+            <Text style={s.difficultyEyebrow}>DÜELLO AYARLARI</Text>
+            <Text style={s.difficultyTitle}>
+              {pendingOpponent?.name ?? 'Rakip'} ile düello
+            </Text>
+            <Text style={s.difficultyCopy}>
+              Süre ve harf seti seçtiğin seviyeye göre değişir.
+            </Text>
+            <View style={s.difficultyOptions}>
+              {DUEL_DIFFICULTIES.map(option => (
+                <Pressable
+                  key={option.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{
+                    checked: selectedDifficulty === option.id,
+                  }}
+                  onPress={() => setSelectedDifficulty(option.id)}
+                  style={({ pressed }) => [
+                    s.difficultyOption,
+                    selectedDifficulty === option.id &&
+                      s.difficultyOptionSelected,
+                    pressed && s.pressed,
+                  ]}
+                >
+                  <View style={s.difficultyOptionCopy}>
+                    <Text style={s.difficultyOptionTitle}>{option.title}</Text>
+                    <Text style={s.difficultyOptionDetail}>
+                      {option.detail}
+                    </Text>
+                  </View>
+                  <Text style={s.difficultyOptionLetters}>
+                    {option.seconds} sn · {option.letters}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={s.confirmActions}>
+              <Pressable
+                onPress={() => {
+                  setDifficultyModalVisible(false);
+                  setPendingOpponent(null);
+                }}
+                style={({ pressed }) => [
+                  s.confirmStayButton,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.confirmStayText}>VAZGEÇ</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void sendInvitation()}
+                style={({ pressed }) => [
+                  s.confirmExitButton,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.confirmExitText}>DAVET ET</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
         visible={exitConfirmVisible}
         transparent
         animationType="fade"
@@ -994,34 +1145,39 @@ export function DuelScreen({ navigation, route }: Props) {
       >
         <View style={s.resultModalBackdrop}>
           <View style={s.resultCard}>
-            <View
-              style={[
-                s.resultIcon,
-                result === 'win'
-                  ? s.resultIconWin
-                  : result === 'lose'
-                    ? s.resultIconLose
-                    : s.resultIconDraw,
-              ]}
-            >
-              <Text style={s.resultIconText}>
-                {result === 'win' ? '★' : result === 'lose' ? '↺' : 'VS'}
-              </Text>
-            </View>
+            {result === 'win' ? (
+              <LottieView
+                source={require('../assets/trophy.json')}
+                autoPlay
+                loop={false}
+                style={s.resultLottie}
+              />
+            ) : (
+              <View
+                style={[
+                  s.resultIcon,
+                  result === 'lose' ? s.resultIconLose : s.resultIconDraw,
+                ]}
+              >
+                <Text style={s.resultIconText}>
+                  {result === 'lose' ? '↺' : 'VS'}
+                </Text>
+              </View>
+            )}
             <Text style={s.resultLabel}>DÜELLO TAMAMLANDI</Text>
             <Text style={s.resultTitle}>
               {result === 'win'
                 ? 'Kazandın!'
                 : result === 'lose'
-                  ? 'Kaybettin'
-                  : 'Berabere'}
+                ? 'Kaybettin'
+                : 'Berabere'}
             </Text>
             <Text style={s.resultSubtitle}>
               {result === 'win'
                 ? 'Hızlı ve doğru kelimelerle rakibini geride bıraktın.'
                 : result === 'lose'
-                  ? 'Bu turu kaçırdın. Yeni bir turda şansını tekrar dene.'
-                  : 'İkiniz de aynı puandasınız. Rövanş zamanı!'}
+                ? 'Bu turu kaçırdın. Yeni bir turda şansını tekrar dene.'
+                : 'İkiniz de aynı puandasınız. Rövanş zamanı!'}
             </Text>
             <View style={s.resultScores}>
               <View
@@ -1495,6 +1651,65 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  difficultyCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: C.surface,
+    borderRadius: 26,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  difficultyEyebrow: {
+    color: C.coral,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  difficultyTitle: {
+    color: C.text,
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '900',
+    marginTop: 7,
+  },
+  difficultyCopy: {
+    color: C.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 7,
+  },
+  difficultyOptions: { marginTop: 16, gap: 8 },
+  difficultyOption: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.raised,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  difficultyOptionSelected: {
+    borderColor: C.coral,
+    backgroundColor: 'rgba(255,138,76,.14)',
+  },
+  difficultyOptionCopy: { flex: 1, minWidth: 0 },
+  difficultyOptionTitle: { color: C.text, fontSize: 14, fontWeight: '900' },
+  difficultyOptionDetail: { color: C.muted, fontSize: 11, marginTop: 3 },
+  difficultyOptionLetters: {
+    color: C.gold,
+    fontSize: 10,
+    fontWeight: '900',
+    marginLeft: 8,
+  },
   resultModalBackdrop: {
     flex: 1,
     backgroundColor: adaptive('rgba(4,11,26,.88)', 'rgba(24,52,59,.42)'),
@@ -1562,6 +1777,7 @@ const s = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     gap: 10,
+    marginTop: 6,
   },
   confirmStayButton: {
     flex: 1,
@@ -1591,6 +1807,11 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 14,
     borderWidth: 1,
+  },
+  resultLottie: {
+    width: 96,
+    height: 96,
+    marginBottom: 2,
   },
   resultIconWin: {
     backgroundColor: 'rgba(22,214,196,.18)',
@@ -1696,7 +1917,7 @@ const s = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 7 },
     elevation: 7,
-    marginTop: 10
+    marginTop: 10,
   },
   newRoundButtonPressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
   newRoundButtonText: {

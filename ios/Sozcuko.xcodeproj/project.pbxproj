@@ -12,6 +12,9 @@
 		25CA95407E34FD664C9CF8B3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		A10000010000000000000001 /* duel_win.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000110000000000000001 /* duel_win.wav */; };
+		A10000020000000000000002 /* duel_lose.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000120000000000000002 /* duel_lose.wav */; };
+		A10000030000000000000003 /* duel_draw.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000130000000000000003 /* duel_draw.wav */; };
 		F636EE69309E0EEE008647D4 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F636EE68309E0EEE008647D4 /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -25,6 +28,9 @@
 		5DCACB8F33CDC322A6C60F78 /* libPods-Sozcuko.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Sozcuko.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Sozcuko/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Sozcuko/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A10000110000000000000001 /* duel_win.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = duel_win.wav; path = Sozcuko/Audio/duel_win.wav; sourceTree = "<group>"; };
+		A10000120000000000000002 /* duel_lose.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = duel_lose.wav; path = Sozcuko/Audio/duel_lose.wav; sourceTree = "<group>"; };
+		A10000130000000000000003 /* duel_draw.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = duel_draw.wav; path = Sozcuko/Audio/duel_draw.wav; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F636EE68309E0EEE008647D4 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -50,6 +56,9 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				A10000110000000000000001 /* duel_win.wav */,
+				A10000120000000000000002 /* duel_lose.wav */,
+				A10000130000000000000003 /* duel_draw.wav */,
 			);
 			name = Sozcuko;
 			sourceTree = "<group>";
@@ -113,8 +122,8 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				44AE79762A283D36074967E8 /* [Sozcuko] Prepare embedded framework metadata */,
+				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
 				708665A683EA5A41F10790F6 /* [Sozcuko] Copy framework dSYMs to archive */,
 				DD3259D84EB361CF32B08AC8 /* [CP-User] [RNGoogleMobileAds] Configuration */,
@@ -167,6 +176,9 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				25CA95407E34FD664C9CF8B3 /* PrivacyInfo.xcprivacy in Resources */,
+				A10000010000000000000001 /* duel_win.wav in Resources */,
+				A10000020000000000000002 /* duel_lose.wav in Resources */,
+				A10000030000000000000003 /* duel_draw.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -328,7 +340,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Sozcuko/Sozcuko.entitlements;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = FACGCHLT4W;
 				ENABLE_BITCODE = NO;
@@ -363,7 +375,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Sozcuko/Sozcuko.entitlements;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = FACGCHLT4W;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;

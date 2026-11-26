@@ -15,7 +15,10 @@ export type DuelRoom = {
   created_at: string;
   started_at: string | null;
   ends_at: string | null;
+  difficulty: DuelDifficulty;
 };
+
+export type DuelDifficulty = 'easy' | 'normal' | 'hard';
 
 export type DuelEvent = {
   id: number;
@@ -83,7 +86,8 @@ const fetchDuelLettersFromApi = async () => {
     puzzle => Array.isArray(puzzle.letters) && puzzle.letters.length >= 3,
   );
   const selected = candidates[Math.floor(Math.random() * candidates.length)];
-  if (!selected) throw new Error('API geçerli bir düello harf seti döndürmedi.');
+  if (!selected)
+    throw new Error('API geçerli bir düello harf seti döndürmedi.');
   return selected.letters;
 };
 
@@ -130,7 +134,7 @@ export const findOrCreateDuelRoom = async (playerId: string) => {
   const room = Array.isArray(payload) ? payload[0] : payload;
   if (!room) throw new Error('Düello odası oluşturulamadı.');
   return room;
-/* legacy REST fallback intentionally removed
+  /* legacy REST fallback intentionally removed
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : String(reason);
     if (!message.includes('(404)')) throw reason;
@@ -163,7 +167,7 @@ export const findOrCreateDuelRoom = async (playerId: string) => {
             player_two_id: playerId,
             status: 'playing',
             started_at: new Date().toISOString(),
-            ends_at: new Date(Date.now() + 10_000).toISOString(),
+            ends_at: new Date(Date.now() + 60_000).toISOString(),
           }),
         },
       );
@@ -190,6 +194,7 @@ export const findOrCreateDuelRoom = async (playerId: string) => {
 export const createDuelInvitation = async (
   playerId: string,
   opponentId: string,
+  difficulty: DuelDifficulty = 'normal',
 ) => {
   const payload = await request<DuelRoom | DuelRoom[]>(
     `${SUPABASE_RPC_URL}/create_duel_invitation`,
@@ -198,6 +203,7 @@ export const createDuelInvitation = async (
       body: JSON.stringify({
         p_player_id: playerId,
         p_opponent_id: opponentId,
+        p_difficulty: difficulty,
       }),
     },
   );
@@ -282,7 +288,7 @@ export const tryJoinOlderDuelRoom = async (playerId: string) => {
         player_two_id: playerId,
         status: 'playing',
         started_at: new Date().toISOString(),
-        ends_at: new Date(Date.now() + 10_000).toISOString(),
+        ends_at: new Date(Date.now() + 60_000).toISOString(),
       }),
     },
   );
@@ -291,13 +297,10 @@ export const tryJoinOlderDuelRoom = async (playerId: string) => {
 */
 
 export const cancelWaitingDuel = async (roomId: string, playerId: string) => {
-  await request(
-    `${SUPABASE_RPC_URL}/cancel_waiting_duel`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ p_room_id: roomId, p_player_id: playerId }),
-    },
-  );
+  await request(`${SUPABASE_RPC_URL}/cancel_waiting_duel`, {
+    method: 'POST',
+    body: JSON.stringify({ p_room_id: roomId, p_player_id: playerId }),
+  });
 };
 
 export const fetchDuelEvents = (roomId: string, afterId = 0) =>

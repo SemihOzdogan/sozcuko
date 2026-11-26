@@ -49,14 +49,17 @@ export const submitClassicWord = (
     return { kind: 'duplicate', word, state };
   }
 
-  if (puzzle.words.includes(word)) {
+  const targetWord = puzzle.words.find(
+    puzzleWord => normalizeTurkishWord(puzzleWord) === word,
+  );
+  if (targetWord) {
     const nextSolvedWords = [...state.solvedWords, word];
     const nextState = {
       solvedWords: nextSolvedWords,
       bonusWords: state.bonusWords,
       revealedCells: revealPlacement(
         state.revealedCells,
-        puzzle.placements[word] ?? [],
+        puzzle.placements[targetWord] ?? puzzle.placements[word] ?? [],
       ),
     };
     return {
