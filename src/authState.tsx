@@ -1,8 +1,16 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Linking } from 'react-native';
 import {
   loadSession,
   sessionFromCallback,
+  deleteAccount as removeAccount,
   signOut as clearSession,
   type AuthSession,
 } from './services/authService';
@@ -12,6 +20,7 @@ type AuthState = {
   isLoading: boolean;
   setSession: (session: AuthSession | null) => void;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 const AuthContext = createContext<AuthState | null>(null);
 
@@ -28,21 +37,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => active && setLoading(false));
     const handleUrl = (event: { url: string }) => {
-      sessionFromCallback(event.url).then(value => value && setSession(value)).catch(() => undefined);
+      sessionFromCallback(event.url)
+        .then(value => value && setSession(value))
+        .catch(() => undefined);
     };
     const subscription = Linking.addEventListener('url', handleUrl);
-    Linking.getInitialURL().then(url => url && handleUrl({ url })).catch(() => undefined);
+    Linking.getInitialURL()
+      .then(url => url && handleUrl({ url }))
+      .catch(() => undefined);
     return () => {
       active = false;
       subscription.remove();
     };
   }, []);
-  const value = useMemo(() => ({
-    session,
-    isLoading,
-    setSession,
-    logout: async () => { await clearSession(); setSession(null); },
-  }), [session, isLoading]);
+  const value = useMemo(
+    () => ({
+      session,
+      isLoading,
+      setSession,
+      logout: async () => {
+        await clearSession();
+        setSession(null);
+      },
+      deleteAccount: async () => {
+        if (!session) throw new Error('Oturum açmış kullanıcı bulunamadı.');
+        await removeAccount(session);
+        setSession(null);
+      },
+    }),
+    [session, isLoading],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

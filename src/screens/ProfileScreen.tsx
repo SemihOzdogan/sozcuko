@@ -1,5 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { useEffect, useState } from 'react';
 import type { RootStackParamList } from '../../App';
 import {
   BackHeader,
+  AppModal,
   Card,
   C,
   getHapticsEnabled,
@@ -28,7 +30,12 @@ export function ProfileScreen({
   navigation,
 }: NativeStackScreenProps<RootStackParamList, 'Profile'>) {
   const game = useGame();
-  const { session, logout } = useAuth();
+  const { session, logout, deleteAccount } = useAuth();
+  const [accountModal, setAccountModal] = useState<
+    'confirm' | 'success' | 'error' | null
+  >(null);
+  const [accountError, setAccountError] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [hapticsEnabled, setHapticsEnabledState] = useState(
     getHapticsEnabled(),
   );
@@ -43,6 +50,26 @@ export function ProfileScreen({
     session?.user?.email?.split('@')[0] ||
     'Misafir';
   const initials = displayName.slice(0, 2).toUpperCase();
+  const requestAccountDeletion = () => {
+    if (!session || deletingAccount) return;
+    setAccountError('');
+    setAccountModal('confirm');
+  };
+  const confirmAccountDeletion = async () => {
+    try {
+      setDeletingAccount(true);
+      await deleteAccount();
+      game.resetProgress();
+      setAccountModal('success');
+    } catch (error) {
+      setAccountError(
+        error instanceof Error ? error.message : 'Lütfen tekrar dene.',
+      );
+      setAccountModal('error');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
   return (
     <View style={s.root}>
       <BackHeader
@@ -195,7 +222,9 @@ export function ProfileScreen({
             </Text>
           </View>
           <Switch
-            accessibilityLabel={`${darkMode ? 'Koyu' : 'Açık'} temayı aç veya kapat`}
+            accessibilityLabel={`${
+              darkMode ? 'Koyu' : 'Açık'
+            } temayı aç veya kapat`}
             value={darkMode}
             onValueChange={enabled => {
               setDarkMode(enabled);
@@ -205,6 +234,33 @@ export function ProfileScreen({
             thumbColor={darkMode ? C.mint : '#FFFFFF'}
           />
         </View>
+        {session ? (
+          <View style={s.dangerCard}>
+            <View style={s.preferenceCopy}>
+              <Text style={s.preferenceTitle}>Hesabı sil</Text>
+              <Text style={s.preferenceSubtitle}>
+                Hesabını ve hesabına bağlı oyun verilerini kalıcı olarak sil.
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Hesabı sil"
+              accessibilityState={{ disabled: deletingAccount }}
+              disabled={deletingAccount}
+              onPress={requestAccountDeletion}
+              style={({ pressed }) => [
+                s.deleteAccountButton,
+                pressed && s.pressed,
+              ]}
+            >
+              {deletingAccount ? (
+                <ActivityIndicator color={C.coral} />
+              ) : (
+                <Text style={s.deleteAccountText}>SİL</Text>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
         <Text style={s.heading}>Son başarımlar</Text>
         <View style={s.achievement}>
           <Text style={s.badge}>♛</Text>
@@ -233,6 +289,29 @@ export function ProfileScreen({
           </Pill>
         </View>
       </ScrollView>
+      <AppModal
+        visible={accountModal === 'confirm'}
+        title="Hesabı sil?"
+        message="Hesabın, lig sıralaman ve düello verilerin kalıcı olarak silinecek. Bu işlem geri alınamaz."
+        confirmLabel="Hesabı Sil"
+        cancelLabel="Vazgeç"
+        destructive
+        loading={deletingAccount}
+        onCancel={() => setAccountModal(null)}
+        onConfirm={confirmAccountDeletion}
+      />
+      <AppModal
+        visible={accountModal === 'success'}
+        title="Hesap silindi"
+        message="Hesabın ve bağlı verilerin silindi."
+        onConfirm={() => setAccountModal(null)}
+      />
+      <AppModal
+        visible={accountModal === 'error'}
+        title="Hesap silinemedi"
+        message={accountError}
+        onConfirm={() => setAccountModal(null)}
+      />
     </View>
   );
 }
@@ -374,6 +453,32 @@ const s = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     marginTop: 4,
+  },
+  dangerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,138,76,.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,138,76,.28)',
+  },
+  deleteAccountButton: {
+    minWidth: 58,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,138,76,.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAccountText: {
+    color: C.coral,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
   levelProgressHeader: {
     flexDirection: 'row',

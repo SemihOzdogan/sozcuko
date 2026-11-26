@@ -189,6 +189,25 @@ const placement = (word, row, column, direction) =>
       ? { row, column: column + index, letter }
       : { row: row + index, column, letter },
   );
+const curatedCampaignPuzzles = {
+  5: {
+    id: 'generated-006',
+    title: 'Kelime Bölümü 6',
+    clue: 'Günlük hayattan kelimeleri bul.',
+    letters: ['K', 'A', 'L', 'E', 'M'],
+    words: ['KALEM', 'KALE', 'ELMA', 'KEL', 'MAL', 'KAM'],
+    bonusWords: ['EL', 'AL', 'MA', 'ALE'],
+    size: 7,
+    placements: {
+      KALEM: placement('KALEM', 3, 1, 'horizontal'),
+      KALE: placement('KALE', 3, 1, 'vertical'),
+      ELMA: placement('ELMA', 3, 4, 'vertical'),
+      KEL: placement('KEL', 1, 3, 'vertical'),
+      MAL: placement('MAL', 3, 5, 'vertical'),
+      KAM: placement('KAM', 1, 3, 'horizontal'),
+    },
+  },
+};
 const createGeneratedPuzzles = targetCount => {
   const generated = [];
   const usedBases = new Set();
@@ -202,6 +221,19 @@ const createGeneratedPuzzles = targetCount => {
   for (const base of basePool) {
     const level = generated.length;
     if (level >= targetCount || usedBases.has(base)) continue;
+    const curatedPuzzle = curatedCampaignPuzzles[level];
+    if (curatedPuzzle) {
+      generated.push({
+        ...curatedPuzzle,
+        design: {
+          ...levelDesign(level),
+          minWordLength: 3,
+          maxWordLength: 5,
+        },
+      });
+      usedBases.add(base);
+      continue;
+    }
     const design = levelDesign(level);
     if (
       base.length < design.minWordLength ||

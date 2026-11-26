@@ -11,6 +11,7 @@ import {
   View,
   Vibration,
   DynamicColorIOS,
+  Modal,
   useColorScheme,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -99,12 +100,12 @@ export function Pill({
     colorScheme === 'light' && color === C.mint
       ? C.mintText
       : colorScheme === 'light' && color === C.gold
-        ? C.goldText
-        : colorScheme === 'light' && color === C.coral
-          ? C.coralText
-          : color;
+      ? C.goldText
+      : colorScheme === 'light' && color === C.coral
+      ? C.coralText
+      : color;
   return (
-    <View style={[s.pill, { backgroundColor: `${color}22` }]}> 
+    <View style={[s.pill, { backgroundColor: `${color}22` }]}>
       <Text style={[s.pillText, { color: textColor }]}>{children}</Text>
     </View>
   );
@@ -156,7 +157,10 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         s.button,
-        { backgroundColor: color, opacity: disabled ? 0.45 : pressed ? 0.82 : 1 },
+        {
+          backgroundColor: color,
+          opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
+        },
         pressed && !disabled && !loading && s.buttonPressed,
       ]}
     >
@@ -166,6 +170,78 @@ export function Button({
         <Text style={s.buttonText}>{title}</Text>
       )}
     </Pressable>
+  );
+}
+
+export function AppModal({
+  visible,
+  title,
+  message,
+  confirmLabel = 'Tamam',
+  cancelLabel,
+  onConfirm,
+  onCancel,
+  destructive = false,
+  loading = false,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+  destructive?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={s.dialogBackdrop}>
+        <View style={s.dialogCard}>
+          <Text style={s.dialogTitle}>{title}</Text>
+          <Text style={s.dialogMessage}>{message}</Text>
+          <View style={s.dialogActions}>
+            {cancelLabel && onCancel ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={cancelLabel}
+                disabled={loading}
+                onPress={onCancel}
+                style={({ pressed }) => [
+                  s.dialogCancel,
+                  pressed && s.buttonPressed,
+                ]}
+              >
+                <Text style={s.dialogCancelText}>{cancelLabel}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={confirmLabel}
+              accessibilityState={{ busy: loading, disabled: loading }}
+              disabled={loading}
+              onPress={onConfirm}
+              style={({ pressed }) => [
+                s.dialogConfirm,
+                { backgroundColor: destructive ? C.coral : C.mint },
+                pressed && s.buttonPressed,
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color={C.ink} />
+              ) : (
+                <Text style={s.dialogConfirmText}>{confirmLabel}</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 export function Card({
@@ -290,6 +366,57 @@ const s = StyleSheet.create({
     letterSpacing: 0.2,
   },
   buttonPressed: { transform: [{ scale: 0.96 }] },
+  dialogBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(4,10,22,.72)',
+  },
+  dialogCard: {
+    width: '100%',
+    maxWidth: 390,
+    padding: 22,
+    borderRadius: 24,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  dialogTitle: {
+    color: C.text,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  dialogMessage: {
+    color: C.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 22,
+  },
+  dialogCancel: {
+    minHeight: 46,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogCancelText: { color: C.muted, fontSize: 12, fontWeight: '900' },
+  dialogConfirm: {
+    minWidth: 92,
+    minHeight: 46,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogConfirmText: { color: C.ink, fontSize: 12, fontWeight: '900' },
   card: {
     borderRadius: 22,
     overflow: 'hidden',

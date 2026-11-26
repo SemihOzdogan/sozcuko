@@ -6,14 +6,8 @@ import {
   DarkTheme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import {
-  Alert,
-  AppState,
-  BackHandler,
-  StatusBar,
-  useColorScheme,
-} from 'react-native';
-import { useEffect } from 'react';
+import { AppState, BackHandler, StatusBar, useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { ClassicScreen } from './src/screens/ClassicScreen';
@@ -21,7 +15,7 @@ import { DuelScreen } from './src/screens/DuelScreen';
 import { LeagueScreen } from './src/screens/LeagueScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { GameProvider } from './src/gameState';
-import { C } from './src/ui';
+import { AppModal, C } from './src/ui';
 import { AuthProvider, useAuth } from './src/authState';
 import { AuthScreen } from './src/screens/AuthScreen';
 import {
@@ -103,6 +97,7 @@ function AuthenticatedApp() {
 }
 
 function AndroidBackHandler() {
+  const [exitModalVisible, setExitModalVisible] = useState(false);
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -114,14 +109,7 @@ function AndroidBackHandler() {
           return true;
         }
         if (route?.name === 'Home') {
-          Alert.alert('Oyundan çık', 'Oyundan çıkmak istiyor musun?', [
-            { text: 'İptal', style: 'cancel' },
-            {
-              text: 'Çıkış',
-              style: 'destructive',
-              onPress: () => BackHandler.exitApp(),
-            },
-          ]);
+          setExitModalVisible(true);
           return true;
         }
         return false;
@@ -129,7 +117,18 @@ function AndroidBackHandler() {
     );
     return () => subscription.remove();
   }, []);
-  return null;
+  return (
+    <AppModal
+      visible={exitModalVisible}
+      title="Oyundan çık"
+      message="Oyundan çıkmak istiyor musun?"
+      confirmLabel="Çıkış"
+      cancelLabel="İptal"
+      destructive
+      onCancel={() => setExitModalVisible(false)}
+      onConfirm={() => BackHandler.exitApp()}
+    />
+  );
 }
 
 function PresenceTracker() {
@@ -202,7 +201,10 @@ function PresenceTracker() {
     });
     const notificationSubscription = subscribeToNotificationPress(roomId => {
       if (navigationRef.isReady()) {
-        navigationRef.navigate('Duel', roomId ? { invitationId: roomId } : undefined);
+        navigationRef.navigate(
+          'Duel',
+          roomId ? { invitationId: roomId } : undefined,
+        );
       }
     });
 

@@ -102,17 +102,15 @@ export function HomeScreen({ navigation }: Props) {
               </Text>
             </View>
           </Pressable>
-          <View style={s.xpBadge}>
-            <Text style={s.xpIcon}>XP</Text>
-            <Text style={s.xpValue}>{game.xp.toLocaleString('tr-TR')}</Text>
+          <View style={[s.xpBadge, isLight && s.xpBadgeLight]}>
+            <Text style={[s.xpIcon, isLight && s.xpTextLight]}>XP</Text>
+            <Text style={[s.xpValue, isLight && s.xpTextLight]}>
+              {game.xp.toLocaleString('tr-TR')}
+            </Text>
           </View>
         </View>
         <Card
-          colors={
-            isLight
-              ? ['#D8F5F0', '#FFFFFF']
-              : ['#12355B', '#0E6B73']
-          }
+          colors={isLight ? ['#D8F5F0', '#FFFFFF'] : ['#12355B', '#0E6B73']}
           preserveColors
           style={s.hero}
         >
@@ -155,8 +153,8 @@ export function HomeScreen({ navigation }: Props) {
                   isLight && title === 'Klasik Kelime'
                     ? ['#D8F5F0', '#FFFFFF']
                     : isLight
-                      ? ['#FFFFFF', '#FFFFFF']
-                      : [dark, '#17243B']
+                    ? ['#FFFFFF', '#FFFFFF']
+                    : [dark, '#17243B']
                 }
                 preserveColors
                 style={s.modeCard}
@@ -174,10 +172,7 @@ export function HomeScreen({ navigation }: Props) {
                       style={[
                         s.symbol,
                         {
-                          color:
-                            title === 'Düello'
-                              ? C.coralText
-                              : C.goldText,
+                          color: title === 'Düello' ? C.coralText : C.goldText,
                         },
                       ]}
                     >
@@ -193,9 +188,7 @@ export function HomeScreen({ navigation }: Props) {
                     {copy}
                   </Text>
                 </View>
-                <Text style={s.modeArrow}>
-                  {route ? '›' : '•'}
-                </Text>
+                <Text style={s.modeArrow}>{route ? '›' : '•'}</Text>
               </Card>
             </Pressable>
           ))}
@@ -253,8 +246,19 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  xpIcon: { color: C.goldText, fontSize: 10, fontWeight: '900', marginRight: 5 },
+  xpBadgeLight: {
+    backgroundColor: C.raised,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  xpIcon: {
+    color: C.goldText,
+    fontSize: 10,
+    fontWeight: '900',
+    marginRight: 5,
+  },
   xpValue: { color: C.goldText, fontWeight: '900', fontSize: 12 },
+  xpTextLight: { color: C.ink },
   hero: {
     minHeight: 208,
     width: '100%',
@@ -378,7 +382,7 @@ const s = StyleSheet.create({
     textAlign: 'right',
     right: 10,
   },
-  modeList: { gap: 9, marginTop: 10},
+  modeList: { gap: 9, marginTop: 10 },
   modePress: { alignSelf: 'stretch' },
   modeCard: {
     minHeight: 80,

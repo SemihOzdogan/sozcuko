@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking } from 'react-native';
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../config';
+import { SUPABASE_ANON_KEY, SUPABASE_REST_URL, SUPABASE_URL } from '../config';
 
 export type AuthUser = {
   id: string;
@@ -37,7 +37,10 @@ const request = async <T>(path: string, init: RequestInit): Promise<T> => {
   }
   if (!response.ok) {
     throw new Error(
-      payload?.msg ?? payload?.error_description ?? payload?.message ?? 'İşlem tamamlanamadı.',
+      payload?.msg ??
+        payload?.error_description ??
+        payload?.message ??
+        'İşlem tamamlanamadı.',
     );
   }
   return payload as T;
@@ -70,7 +73,11 @@ export const signInWithPassword = (email: string, password: string) =>
     body: JSON.stringify({ email, password }),
   }).then(saveSession);
 
-export const signUpWithPassword = (email: string, password: string, name: string) =>
+export const signUpWithPassword = (
+  email: string,
+  password: string,
+  name: string,
+) =>
   request<AuthSession>('/signup', {
     method: 'POST',
     body: JSON.stringify({ email, password, data: { name } }),
@@ -80,11 +87,19 @@ export const signUpWithPassword = (email: string, password: string, name: string
   });
 
 export const getAppleSignInUrl = () =>
-  `${AUTH_URL}/authorize?provider=apple&redirect_to=${encodeURIComponent(REDIRECT_URI)}`;
+  `${AUTH_URL}/authorize?provider=apple&redirect_to=${encodeURIComponent(
+    REDIRECT_URI,
+  )}`;
 
-export const signInWithGoogleIdToken = (idToken: string, accessToken?: string) => {
+export const signInWithGoogleIdToken = (
+  idToken: string,
+  accessToken?: string,
+) => {
   const token = idToken.trim();
-  if (!token) throw new Error('Google ID token boş döndü. Google istemci ayarını kontrol et.');
+  if (!token)
+    throw new Error(
+      'Google ID token boş döndü. Google istemci ayarını kontrol et.',
+    );
   return request<AuthSession>('/token?grant_type=id_token', {
     method: 'POST',
     body: JSON.stringify({
@@ -118,7 +133,40 @@ export const sessionFromCallback = async (url: string) => {
     method: 'GET',
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  return saveSession({ access_token: accessToken, refresh_token: refreshToken, user });
+  return saveSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user,
+  });
 };
 
 export const signOut = () => AsyncStorage.removeItem(SESSION_KEY);
+
+export const deleteAccount = async (session: AuthSession) => {
+  const response = await fetch(`${SUPABASE_REST_URL}/rpc/delete_current_user`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    let message = 'Hesap silinemedi.';
+    try {
+      const payload = body ? JSON.parse(body) : null;
+      message = payload?.message ?? payload?.msg ?? message;
+    } catch {
+      // Supabase dışı yanıtları genel hata mesajıyla göster.
+    }
+    throw new Error(message);
+  }
+
+  await AsyncStorage.multiRemove([
+    SESSION_KEY,
+    '@sozcuko/game-state:v3',
+    '@sozcuko/duel-device-player-id-v2',
+  ]);
+};

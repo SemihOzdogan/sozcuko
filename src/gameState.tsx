@@ -27,12 +27,14 @@ type GameState = {
   completeClassicLevel: (level: number) => void;
   recordClassicClueUse: (level: number) => void;
   finishDuel: (result: 'win' | 'lose' | 'draw') => void;
+  resetProgress: () => void;
 };
 const GameContext = createContext<GameState | null>(null);
 // İlerleme sıfırlama sürümü: eski cihaz kayıtları yeni sezona taşınmaz.
 // Sunucu tarafındaki toplu temizleme sonrası eski cihaz ilerlemesi yeniden
 // yüklenmesin diye yerel kayıt sürümü bilinçli olarak artırıldı.
 const GAME_STATE_KEY = '@sozcuko/game-state:v3';
+const ONE_TIME_RESET_KEY = '@sozcuko/one-time-reset-applied:v1';
 const LEGACY_GAME_STATE_KEYS = [
   '@sozcuko/game-state',
   '@sozcuko/game-state:v1',
@@ -68,7 +70,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [leagueLosses, setLeagueLosses] = useState(DEFAULT_STATE.leagueLosses);
   useEffect(() => {
     let active = true;
-    AsyncStorage.multiRemove(LEGACY_GAME_STATE_KEYS)
+    AsyncStorage.getItem(ONE_TIME_RESET_KEY)
+      .then(resetApplied => {
+        if (resetApplied) return;
+        return AsyncStorage.multiRemove([
+          GAME_STATE_KEY,
+          ...LEGACY_GAME_STATE_KEYS,
+        ]).then(() => AsyncStorage.setItem(ONE_TIME_RESET_KEY, 'true'));
+      })
+      .then(() => AsyncStorage.multiRemove(LEGACY_GAME_STATE_KEYS))
       .then(() => AsyncStorage.getItem(GAME_STATE_KEY))
       .then(raw => {
         if (!active) return;
@@ -172,6 +182,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setXp(nextXp);
     return true;
   };
+  const resetProgress = () => {
+    xpRef.current = DEFAULT_STATE.xp;
+    setXp(DEFAULT_STATE.xp);
+    setClassicScore(DEFAULT_STATE.classicScore);
+    setClassicWords(DEFAULT_STATE.classicWords);
+    setClassicCompletedLevels(DEFAULT_STATE.classicCompletedLevels);
+    setClassicClueUses(DEFAULT_STATE.classicClueUses);
+    setDuelWins(DEFAULT_STATE.duelWins);
+    setLeaguePoints(DEFAULT_STATE.leaguePoints);
+    setLeagueWins(DEFAULT_STATE.leagueWins);
+    setLeagueLosses(DEFAULT_STATE.leagueLosses);
+  };
   const value = useMemo(
     () => ({
       xp,
@@ -209,6 +231,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           award(30);
         }
       },
+      resetProgress,
     }),
     [
       xp,

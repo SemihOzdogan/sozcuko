@@ -151,8 +151,7 @@ export function ClassicScreen({ navigation }: Props) {
   const [isClueVisible, setIsClueVisible] = useState(false);
   const [isClueLoading, setIsClueLoading] = useState(false);
   const [isClueRewardLoading, setIsClueRewardLoading] = useState(false);
-  const [isClueRewardUnavailable, setIsClueRewardUnavailable] =
-    useState(false);
+  const [isClueRewardUnavailable, setIsClueRewardUnavailable] = useState(false);
   const clueRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [successBurstVisible, setSuccessBurstVisible] = useState(false);
   const successBurstAnimation = useRef(new Animated.Value(0)).current;
@@ -376,10 +375,6 @@ export function ClassicScreen({ navigation }: Props) {
   const boardInset = Math.max(3, Math.round(4 * uiScale));
   const boardPadding = boardInset * 2;
   const boardOuterPadding = Math.round(10 * uiScale);
-  // Give the wheel a little more of the vertical space while keeping the
-  // board responsive on shorter iPhones.
-  const minimumWheelSize = 132;
-  const maximumWheelSize = Math.round(WHEEL_SIZE * Math.min(1, uiScale + 0.08));
   // BackHeader = safe-area top + 46px XP frame + 14px bottom padding.
   const headerHeight = insets.top + 46 + 14;
   const contentPadding = 12 + 24;
@@ -387,35 +382,31 @@ export function ClassicScreen({ navigation }: Props) {
   // Selection panel without the wheel: clue button, word display, feedback,
   // utility row, margins and card padding. Keep this larger than the visual
   // minimum so the bottom controls never get pushed below the viewport.
-  const reservedSelection = 208;
+  // Compact selection controls: clue, word preview, feedback, gaps and
+  // utility buttons. This leaves the wheel large without overflowing.
+  // Fixed space above and below the wheel. The utility row is pushed to the
+  // bottom of the 60% card with an auto top margin.
+  const reservedSelection = 162;
   const availableContentHeight = Math.max(
     0,
     screenHeight - headerHeight - contentPadding,
   );
-  const maximumBoardHeight = Math.max(
-    140,
-    availableContentHeight - reservedSelection - minimumWheelSize - boardMargin,
+  // The playable area is split independently of puzzle content: cells use
+  // 40%, while the wheel card uses the remaining 60%.
+  const playableHeight = Math.max(0, availableContentHeight - boardMargin);
+  const boardCardHeight = Math.round(playableHeight * 0.4);
+  const selectionCardHeight = playableHeight - boardCardHeight;
+  const wheelSize = Math.min(
+    250,
+    Math.max(132, selectionCardHeight - reservedSelection),
   );
+  const maximumBoardHeight = Math.max(140, boardCardHeight);
   const sizingPitch = Math.max(
     18,
     Math.min(
       56 * uiScale,
       (screenWidth - 32) / sizingColumns,
       (maximumBoardHeight - boardPadding - boardOuterPadding * 2) / sizingRows,
-    ),
-  );
-  const sizingBoardHeight =
-    sizingRows * sizingPitch + boardPadding + boardOuterPadding * 2;
-  const wheelSize = Math.round(
-    Math.max(
-      minimumWheelSize,
-      Math.min(
-        maximumWheelSize,
-        availableContentHeight -
-          sizingBoardHeight -
-          boardMargin -
-          reservedSelection,
-      ),
     ),
   );
   const letterSize = Math.round(LETTER_SIZE * (wheelSize / WHEEL_SIZE));
@@ -561,7 +552,10 @@ export function ClassicScreen({ navigation }: Props) {
       const rewardGranted = await showRewardedClueAd();
       setIsClueRewardLoading(false);
       if (!rewardGranted) {
-        showFeedback('Reklam şu anda yüklenemedi. Lütfen tekrar dene.', 'error');
+        showFeedback(
+          'Reklam şu anda yüklenemedi. Lütfen tekrar dene.',
+          'error',
+        );
         setIsClueRewardUnavailable(true);
         if (clueRetryTimerRef.current) {
           clearTimeout(clueRetryTimerRef.current);
@@ -637,8 +631,6 @@ export function ClassicScreen({ navigation }: Props) {
   // Keep a visible gutter between adjacent cells on every screen size.
   const cellGap = Math.max(8, Math.round(10 * uiScale));
   const cellSize = Math.max(18, pitch - cellGap);
-  const boardCardHeight =
-    boardRows * pitch + boardPadding + boardOuterPadding * 2;
   const current = selected.map(index => wheelLetters[index]).join('');
   const complete =
     solved.length === puzzle.words.length ||
@@ -665,9 +657,11 @@ export function ClassicScreen({ navigation }: Props) {
         tagOnly
         onBack={navigation.goBack}
         rightContent={
-          <View style={s.xpBadge}>
-            <Text style={s.xpIcon}>XP</Text>
-            <Text style={s.xpText}>{game.xp.toLocaleString('tr-TR')}</Text>
+          <View style={[s.xpBadge, isLight && s.xpBadgeLight]}>
+            <Text style={[s.xpIcon, isLight && s.xpTextLight]}>XP</Text>
+            <Text style={[s.xpText, isLight && s.xpTextLight]}>
+              {game.xp.toLocaleString('tr-TR')}
+            </Text>
           </View>
         }
       />
@@ -754,9 +748,10 @@ export function ClassicScreen({ navigation }: Props) {
           style={[
             s.selectionCard,
             {
+              height: selectionCardHeight,
               justifyContent: 'flex-start',
-              paddingTop: Math.round(14 * uiScale),
-              paddingBottom: Math.round(14 * uiScale),
+              paddingTop: Math.round(6 * uiScale),
+              paddingBottom: Math.round(6 * uiScale),
             },
           ]}
         >
@@ -779,8 +774,8 @@ export function ClassicScreen({ navigation }: Props) {
             style={[
               s.wordDisplay,
               {
-                height: Math.round(42 * uiScale),
-                marginTop: Math.round(10 * uiScale),
+                height: Math.round(32 * uiScale),
+                marginTop: Math.round(6 * uiScale),
               },
               !current && s.wordDisplayEmpty,
             ]}
@@ -847,7 +842,7 @@ export function ClassicScreen({ navigation }: Props) {
                 width: wheelSize,
                 height: wheelSize,
                 borderRadius: wheelSize / 2,
-                marginTop: Math.round(12 * uiScale),
+                marginTop: Math.round(8 * uiScale),
               },
             ]}
             {...panResponder.panHandlers}
@@ -1061,8 +1056,13 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  xpBadgeLight: {
+    backgroundColor: C.raised,
+    borderColor: C.border,
+  },
   xpIcon: { color: C.gold, fontSize: 10, marginRight: 6 },
   xpText: { color: C.text, fontSize: 12, fontWeight: '900' },
+  xpTextLight: { color: C.ink },
   boardCard: {
     width: '100%',
     alignItems: 'center',
@@ -1130,7 +1130,7 @@ const s = StyleSheet.create({
     backgroundColor: adaptive('rgba(255,255,255,.10)', 'rgba(39,86,88,.08)'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: adaptive('rgba(255,255,255,.16)', 'rgba(39,86,88,.18)'),
   },
@@ -1183,7 +1183,7 @@ const s = StyleSheet.create({
     zIndex: 1,
   },
   utilityButton: {
-    minHeight: 40,
+    minHeight: 34,
     paddingHorizontal: 12,
     borderRadius: 20,
     backgroundColor: adaptive('rgba(22,214,196,.13)', 'rgba(25,183,167,.10)'),
@@ -1201,7 +1201,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    marginTop: 12,
+    marginTop: 'auto',
   },
   shuffleButton: {
     flex: 1,
@@ -1262,7 +1262,7 @@ const s = StyleSheet.create({
     minHeight: 18,
   },
   feedbackRow: {
-    minHeight: 28,
+    minHeight: 24,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
