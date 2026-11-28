@@ -546,8 +546,10 @@ export function ClassicScreen({ navigation }: Props) {
       setIsClueVisible(true);
       return;
     }
-    const clueUses = game.classicClueUses[String(level)] ?? 0;
-    if (clueUses > 0) {
+    const previousClueWord = game.classicClueWords[String(level)];
+    const requiresReward =
+      previousClueWord !== undefined && previousClueWord !== target;
+    if (requiresReward) {
       setIsClueRewardLoading(true);
       const rewardGranted = await showRewardedClueAd();
       setIsClueRewardLoading(false);
@@ -567,7 +569,7 @@ export function ClassicScreen({ navigation }: Props) {
         return;
       }
     }
-    game.recordClassicClueUse(level);
+    game.recordClassicClueUse(level, target);
     const meaning = WORD_CLUES[target];
     setIsClueVisible(true);
     setIsClueLoading(!meaning);

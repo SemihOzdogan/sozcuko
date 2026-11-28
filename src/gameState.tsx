@@ -8,6 +8,12 @@ import {
 } from 'react';
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from './authState';
+import {
+  fetchCloudProgress,
+  saveCloudProgress,
+  type CloudProgress,
+} from './services/progressService';
 
 type GameState = {
   xp: number;
@@ -15,6 +21,7 @@ type GameState = {
   classicWords: number;
   classicCompletedLevels: number[];
   classicClueUses: Record<string, number>;
+  classicClueWords: Record<string, string>;
   isHydrated: boolean;
   duelWins: number;
   leaguePoints: number;
@@ -25,7 +32,7 @@ type GameState = {
   spendXp: (amount: number) => boolean;
   solveClassic: () => void;
   completeClassicLevel: (level: number) => void;
-  recordClassicClueUse: (level: number) => void;
+  recordClassicClueUse: (level: number, word: string) => void;
   finishDuel: (result: 'win' | 'lose' | 'draw') => void;
   resetProgress: () => void;
 };
@@ -46,13 +53,65 @@ const DEFAULT_STATE = {
   classicWords: 0,
   classicCompletedLevels: [] as number[],
   classicClueUses: {} as Record<string, number>,
+  classicClueWords: {} as Record<string, string>,
   duelWins: 0,
   leaguePoints: 0,
   leagueWins: 0,
   leagueLosses: 0,
 };
 type StoredGameState = Partial<typeof DEFAULT_STATE>;
+
+const maxRecord = (
+  local: Record<string, number>,
+  remote: Record<string, number>,
+) =>
+  Object.fromEntries(
+    [...new Set([...Object.keys(local), ...Object.keys(remote)])].map(key => [
+      key,
+      Math.max(local[key] ?? 0, remote[key] ?? 0),
+    ]),
+  );
+
+const mergeProgress = (
+  local: Omit<CloudProgress, 'player_id' | 'updated_at'>,
+  remote: CloudProgress,
+): Omit<CloudProgress, 'player_id' | 'updated_at'> => {
+  const clueUses = maxRecord(local.classic_clue_uses, remote.classic_clue_uses);
+  const clueWords = [
+    ...new Set([
+      ...Object.keys(local.classic_clue_words),
+      ...Object.keys(remote.classic_clue_words),
+    ]),
+  ].reduce<Record<string, string>>((result, key) => {
+    const selectedWord =
+      (remote.classic_clue_uses[key] ?? 0) >
+      (local.classic_clue_uses[key] ?? 0)
+        ? remote.classic_clue_words[key]
+        : local.classic_clue_words[key] ?? remote.classic_clue_words[key];
+    if (selectedWord) result[key] = selectedWord;
+    return result;
+  }, {});
+  return {
+    xp: Math.max(local.xp, remote.xp),
+    classic_score: Math.max(local.classic_score, remote.classic_score),
+    classic_words: Math.max(local.classic_words, remote.classic_words),
+    classic_completed_levels: Array.from(
+      new Set([
+        ...local.classic_completed_levels,
+        ...remote.classic_completed_levels,
+      ]),
+    ).sort((a, b) => a - b),
+    classic_clue_uses: clueUses,
+    classic_clue_words: clueWords,
+    duel_wins: Math.max(local.duel_wins, remote.duel_wins),
+    league_points: Math.max(local.league_points, remote.league_points),
+    league_wins: Math.max(local.league_wins, remote.league_wins),
+    league_losses: Math.max(local.league_losses, remote.league_losses),
+  };
+};
+
 export function GameProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
   const [xp, setXp] = useState(DEFAULT_STATE.xp);
   const xpRef = useRef(DEFAULT_STATE.xp);
   const [classicScore, setClassicScore] = useState(DEFAULT_STATE.classicScore);
@@ -63,6 +122,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [classicClueUses, setClassicClueUses] = useState<
     Record<string, number>
   >(DEFAULT_STATE.classicClueUses);
+  const [classicClueWords, setClassicClueWords] = useState<
+    Record<string, string>
+  >(DEFAULT_STATE.classicClueWords);
+  const [cloudSyncReady, setCloudSyncReady] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [duelWins, setDuelWins] = useState(DEFAULT_STATE.duelWins);
   const [leaguePoints, setLeaguePoints] = useState(DEFAULT_STATE.leaguePoints);
@@ -115,6 +178,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
               );
               setClassicClueUses(validClueUses);
             }
+            if (
+              stored.classicClueWords &&
+              typeof stored.classicClueWords === 'object' &&
+              !Array.isArray(stored.classicClueWords)
+            ) {
+              const validClueWords = Object.fromEntries(
+                Object.entries(stored.classicClueWords).filter(
+                  ([key, value]) =>
+                    /^\d+$/.test(key) && typeof value === 'string',
+                ),
+              );
+              setClassicClueWords(validClueWords);
+            }
             if (typeof stored.duelWins === 'number')
               setDuelWins(stored.duelWins);
             if (typeof stored.leaguePoints === 'number')
@@ -146,6 +222,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicWords,
       classicCompletedLevels,
       classicClueUses,
+      classicClueWords,
       duelWins,
       leaguePoints,
       leagueWins,
@@ -160,11 +237,100 @@ export function GameProvider({ children }: { children: ReactNode }) {
     classicWords,
     classicCompletedLevels,
     classicClueUses,
+    classicClueWords,
     duelWins,
     leaguePoints,
     leagueWins,
     leagueLosses,
     isHydrated,
+  ]);
+  useEffect(() => {
+    if (!isHydrated) return;
+    const accessToken = session?.access_token;
+    const playerId = session?.user?.id;
+    if (!accessToken || !playerId) {
+      setCloudSyncReady(false);
+      return;
+    }
+
+    let active = true;
+    setCloudSyncReady(false);
+    const localProgress = {
+      xp,
+      classic_score: classicScore,
+      classic_words: classicWords,
+      classic_completed_levels: classicCompletedLevels,
+      classic_clue_uses: classicClueUses,
+      classic_clue_words: classicClueWords,
+      duel_wins: duelWins,
+      league_points: leaguePoints,
+      league_wins: leagueWins,
+      league_losses: leagueLosses,
+    };
+    fetchCloudProgress(accessToken, playerId)
+      .then(cloudProgress => {
+        if (!active) return;
+        if (!cloudProgress) {
+          setCloudSyncReady(true);
+          return;
+        }
+        const merged = mergeProgress(localProgress, cloudProgress);
+        xpRef.current = merged.xp;
+        setXp(merged.xp);
+        setClassicScore(merged.classic_score);
+        setClassicWords(merged.classic_words);
+        setClassicCompletedLevels(merged.classic_completed_levels);
+        setClassicClueUses(merged.classic_clue_uses);
+        setClassicClueWords(merged.classic_clue_words);
+        setDuelWins(merged.duel_wins);
+        setLeaguePoints(merged.league_points);
+        setLeagueWins(merged.league_wins);
+        setLeagueLosses(merged.league_losses);
+        setCloudSyncReady(true);
+      })
+      .catch(() => {
+        // Bulut erişilemiyorsa yerel ilerleme ile devam edilir.
+        if (active) setCloudSyncReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isHydrated, session?.access_token, session?.user?.id]);
+  const cloudPlayerId = session?.user?.id;
+  useEffect(() => {
+    if (!isHydrated || !cloudSyncReady || !session?.access_token || !cloudPlayerId)
+      return;
+    const timeout = setTimeout(() => {
+      saveCloudProgress(session.access_token, {
+        player_id: cloudPlayerId,
+        xp,
+        classic_score: classicScore,
+        classic_words: classicWords,
+        classic_completed_levels: classicCompletedLevels,
+        classic_clue_uses: classicClueUses,
+        classic_clue_words: classicClueWords,
+        duel_wins: duelWins,
+        league_points: leaguePoints,
+        league_wins: leagueWins,
+        league_losses: leagueLosses,
+      }).catch(() => undefined);
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [
+    isHydrated,
+    cloudSyncReady,
+    session?.access_token,
+    cloudPlayerId,
+    xp,
+    classicScore,
+    classicWords,
+    classicCompletedLevels,
+    classicClueUses,
+    classicClueWords,
+    duelWins,
+    leaguePoints,
+    leagueWins,
+    leagueLosses,
   ]);
   useEffect(() => {
     xpRef.current = xp;
@@ -189,6 +355,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setClassicWords(DEFAULT_STATE.classicWords);
     setClassicCompletedLevels(DEFAULT_STATE.classicCompletedLevels);
     setClassicClueUses(DEFAULT_STATE.classicClueUses);
+    setClassicClueWords(DEFAULT_STATE.classicClueWords);
     setDuelWins(DEFAULT_STATE.duelWins);
     setLeaguePoints(DEFAULT_STATE.leaguePoints);
     setLeagueWins(DEFAULT_STATE.leagueWins);
@@ -201,6 +368,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicWords,
       classicCompletedLevels,
       classicClueUses,
+      classicClueWords,
       isHydrated,
       duelWins,
       leaguePoints,
@@ -219,11 +387,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
           value.includes(level) ? value : [...value, level],
         );
       },
-      recordClassicClueUse: (level: number) => {
+      recordClassicClueUse: (level: number, word: string) => {
         setClassicClueUses(value => {
           const key = String(level);
           return { ...value, [key]: (value[key] ?? 0) + 1 };
         });
+        setClassicClueWords(value => ({ ...value, [String(level)]: word }));
       },
       finishDuel: (result: 'win' | 'lose' | 'draw') => {
         if (result === 'win') {
@@ -239,6 +408,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       classicWords,
       classicCompletedLevels,
       classicClueUses,
+      classicClueWords,
       isHydrated,
       duelWins,
       leaguePoints,
